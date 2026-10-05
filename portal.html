@@ -222,6 +222,10 @@ input[readonly]{background:var(--paper)}
 .note.good{background:var(--green-2);color:#13603C}
 .tabs{display:flex;gap:4px;background:var(--line-2);padding:4px;border-radius:12px;margin-bottom:12px;overflow-x:auto}
 .tabs button{flex:1;white-space:nowrap;background:none;border:0;font:inherit;font-size:14px;padding:8px 12px;border-radius:9px;color:var(--ink-2);cursor:pointer}
+.tabs{scrollbar-width:none;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{scroll-snap-align:center}
+@media (max-width:480px){.tabs button{flex:0 0 auto;font-size:13px;padding:8px 11px}.page-head h1{font-size:21px}.row .m b{overflow-wrap:anywhere}.filters select,.filters input{min-width:0;width:100%}.actions.end .btn,.actions .btn.sm{white-space:nowrap}}
 .tabs button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--shadow)}
 .filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
 @media (min-width:800px){.filters{grid-template-columns:repeat(4,1fr)}}
@@ -295,6 +299,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--
 
 /* ---------- GST documents (screen preview + print) ---------- */
 #printArea{display:none}
+.pthumb{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none;margin-right:10px;background:var(--line-2)}
+.btn.wa{background:#25D366;border-color:#25D366;color:#fff}
 .doc{font-family:Arial,Helvetica,sans-serif;font-size:8.6pt;line-height:1.3;color:#000;background:#fff;padding:2mm 3mm;width:194mm;box-sizing:border-box}
 .doc .doc-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:1.5mm}
 .doc .doc-title{font-size:12pt;font-weight:700;letter-spacing:.06em}
@@ -414,6 +420,8 @@ function fdate(v) {
 function fdatetime(v) { var s = String(v || ''); return s.length > 10 ? fdate(s) + ' ' + s.slice(11, 16) : fdate(s); }
 function can(c) { return !!(S.boot && S.boot.caps && S.boot.caps[c]); }
 function group() { return S.boot ? S.boot.user.role_group : ''; }
+/* V7.7 free WhatsApp click-to-chat (wa.me) */
+function waLink(phone, text) { var p = String(phone || '').replace(/\D/g, ''); if (p.length === 10) p = '91' + p; return 'https://wa.me/' + p + (text ? '?text=' + encodeURIComponent(text) : ''); }
 function isAdmin() { return group() === 'MANAGEMENT'; }
 function isSales() { return group() === 'SALES'; }
 function L(name) { return (S.boot && S.boot.lists && S.boot.lists[name]) || []; }
@@ -478,7 +486,7 @@ function swallow() {}
 
 /* --------------------------- FILES --------------------------- */
 /** Reads a file input; images are resized to max 1600px JPEG so uploads stay small on mobile data. */
-function readFile(inputId) {
+function readFile(inputId, maxPx) {
   var input = $(inputId), f = input && input.files && input.files[0];
   if (!f) return Promise.resolve(null);
   return new Promise(function (resolve, reject) {
@@ -489,7 +497,7 @@ function readFile(inputId) {
       if (!/^image\//.test(f.type) || /gif|svg/.test(f.type)) return resolve({ data: r.result, name: f.name, mime: f.type });
       var img = new Image();
       img.onload = function () {
-        var max = 1600, w = img.width, h = img.height, k = Math.min(1, max / Math.max(w, h));
+        var max = maxPx || 1600, w = img.width, h = img.height, k = Math.min(1, max / Math.max(w, h));
         var c = document.createElement('canvas'); c.width = Math.round(w * k); c.height = Math.round(h * k);
         c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
         resolve({ data: c.toDataURL('image/jpeg', 0.75), name: f.name.replace(/\.\w+$/, '') + '.jpg', mime: 'image/jpeg' });
@@ -544,7 +552,7 @@ function switchCompany(cid) {
   if (!cid || (S.boot.company && cid === S.boot.company.company_id)) return;
   call('setActiveCompany', cid).then(function (b) {
     S.boot = b; S.cache = {}; paintShell();
-    toast('Now working in ' + b.company.company_name, 'good');
+    toast(b.company.all ? 'Showing all companies together. Choose one company to make changes.' : 'Now working in ' + b.company.company_name, 'good');
     go('home', {}, { reset: true });
   }, function (e) { showErr(e); paintShell(); });
 }
@@ -595,11 +603,12 @@ function navItems() {
     { id: 'customers', label: 'Retail outlets', icon: 'outlets', show: can('customer.view'), grp: 'Work' },
     { id: 'd2c', label: 'Direct (D2C)', icon: 'home', show: can('d2c.view'), grp: 'Work' },
     { id: 'd2cDeliver', label: 'Home deliveries', icon: 'truck', show: can('d2c.deliver'), grp: 'Work' },
+    { id: 'myBeats', label: 'My beats', icon: 'route', show: can('beat.create') && !can('beat.manage'), grp: 'Work' },
     { id: 'collect', label: 'Collections', icon: 'cash', show: can('payment.record'), grp: 'Money' },
     { id: 'finance', label: g === 'SALES' ? 'My outstanding' : 'Finance', icon: 'finance', show: can('finance.view'), grp: 'Money' },
     { id: 'payables', label: 'Payables (company)', icon: 'wallet', show: can('payable.view'), grp: 'Money' },
     { id: 'billing', label: 'Invoices & notes', icon: 'order', show: can('invoice.create') || can('note.create'), grp: 'Money' },
-    { id: 'approvals', label: 'Approvals', icon: 'check', show: can('customer.approve') || can('payment.approve') || can('expense.approve'), grp: 'Money' },
+    { id: 'approvals', label: 'Approvals', icon: 'check', show: can('customer.approve') || can('payment.approve') || can('expense.approve') || can('beat.manage') || can('note.post'), grp: 'Money' },
     { id: 'followups', label: 'Follow-ups', icon: 'call', show: can('followup.manage'), grp: 'Day' },
     { id: 'closing', label: 'Daily closing', icon: 'closing', show: can('closing.submit') || can('closing.view'), grp: 'Day' },
     { id: 'stock', label: 'Stock & purchases', icon: 'outlets', show: can('stock.view') && group() !== 'SALES', grp: 'Operations' },
@@ -615,7 +624,7 @@ function navItems() {
 }
 function bottomIds() {
   return ({ SALES: ['home', 'order', 'customers', 'collect'], MANAGEMENT: ['home', 'orders', 'control', 'billing'], ACCOUNTS: ['home', 'control', 'billing', 'finance'],
-    OPERATIONS: ['home', 'control', 'orders', 'deliveries'], DELIVERY: ['home', 'deliveries', 'vehicles', 'expenses'], PARTNER: ['d2cDeliver', 'profile'] })[group()] || ['home'];
+    OPERATIONS: ['home', 'control', 'orders', 'deliveries'], DELIVERY: ['home', 'deliveries', 'vehicles', 'expenses'], CLERK: ['home', 'order', 'collect', 'billing'], PARTNER: ['d2cDeliver', 'profile'] })[group()] || ['home'];
 }
 function paintShell() {
   var b = S.boot, c = b.company || {};
@@ -623,7 +632,7 @@ function paintShell() {
   $('hUser').textContent = b.user.name + ' · ' + cap(b.user.role);
   $('hLogo').innerHTML = '<img alt="Arhaan Agencies" src="' + APP_LOGO + '">';
   var sel = $('companySel');
-  sel.innerHTML = opts(b.companies, c.company_id, undefined, 'company_id', 'company_name');
+  sel.innerHTML = opts(b.companies.length > 1 && isAdmin() ? [{ company_id: 'ALL', company_name: '★ All companies (read-only)' }].concat(b.companies) : b.companies, c.company_id, undefined, 'company_id', 'company_name');
   sel.disabled = b.companies.length < 2;
   setUnread(b.unread || 0);
   paintNav();
@@ -664,7 +673,7 @@ function go(view, params, opt) {
 }
 function back() { var p = S.stack.pop(); if (p) { S.view = p.view; S.params = p.params; paintNav(); (VIEWS[p.view] || VIEWS.home)(p.params); window.scrollTo(0, 0); } else go(group() === 'PARTNER' ? 'd2cDeliver' : 'home', {}, { reset: true }); }
 function refresh() { (VIEWS[S.view] || VIEWS.home)(S.params); }
-function setMain(html) { $('main').innerHTML = html; }
+function setMain(html) { $('main').innerHTML = html; try { var on = document.querySelector('#main .tabs button.on'); if (on && on.parentElement.scrollWidth > on.parentElement.clientWidth) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - 40); } catch (e) {} }
 function head(title, sub, right) {
   return '<div class="page-head">' + (S.stack.length ? '<button class="back" onclick="back()" aria-label="Back">' + icon('back') + '</button>' : '') +
     '<div class="t"><h1>' + esc(title) + '</h1>' + (sub ? '<p>' + sub + '</p>' : '') + '</div>' + (right || '') + '</div>';
@@ -729,7 +738,7 @@ function kpi(label, value, sub, tone, onclick) {
 }
 function emptyState(title, text, btn) { return '<div class="empty"><b>' + esc(title) + '</b>' + (text ? esc(text) : '') + (btn ? '<div style="margin-top:12px">' + btn + '</div>' : '') + '</div>'; }
 function searchBox(id, placeholder, oninput) { return '<div class="search">' + icon('search') + '<input id="' + id + '" type="search" placeholder="' + attr(placeholder) + '" oninput="' + oninput + '"></div>'; }
-function companyLine() { return S.boot.company ? 'Current company: <b>' + esc(S.boot.company.company_name) + '</b>' : ''; }
+function companyLine() { var c = S.boot.company; return !c ? '' : (c.all ? 'Showing: <b>All companies</b> (read-only)' : 'Current company: <b>' + esc(c.company_name) + '</b>'); }
 
 /* ------------------------------ PROFILE / NOTIFICATIONS ------------------------------ */
 VIEWS.profile = function (p) {
@@ -894,6 +903,7 @@ VIEWS.customer = function (p) {
       (can('payment.record') ? '<button class="btn ghost" onclick="go(\'collectForm\',{customer_id:' + js(c.customer_id) + '})">Collect payment</button>' : '') +
       (can('followup.manage') ? '<button class="btn ghost" onclick="openFollowupForm(' + js(c.customer_id) + ')">Follow-up</button>' : '') +
       (can('visit.record') ? '<button class="btn ghost" onclick="openVisitForm(' + js(c.customer_id) + ')">Visit · no order</button>' : '') +
+      (c.mobile ? '<a class="btn ghost" target="_blank" rel="noopener" href="' + attr(waLink(c.mobile, c.outstanding > 0 ? 'Dear ' + c.customer_name + ', your outstanding with ' + (S.boot.seller_name || 'Arhaan Agencies') + ' is ' + money(c.outstanding) + ' (' + c.open_invoices.map(function (i) { return i.invoice_number + ' ' + money0(i.balance); }).join(', ') + '). Kindly arrange payment. Thank you.' : 'Dear ' + c.customer_name + ', ')) + '">WhatsApp</a>' : '') +
       (c.can_edit ? '<button class="btn ghost" onclick="go(\'outletForm\',{id:' + js(c.customer_id) + '})">Edit</button>' : '') +
       (c.can_admin ? '<button class="btn ghost" onclick="changeCustomerStatus(' + js(c.customer_id) + ',' + js(c.status) + ')">Change status</button>' : '') + '</div>';
     if (c.outstanding !== null) html += '<div class="kpis">' + kpi('Outstanding', money0(c.outstanding), c.open_invoices.length + ' open invoice(s)', c.outstanding ? 'due' : '') +
@@ -979,9 +989,9 @@ var O = null;
 VIEWS.order = function (p) {
   p = p || {};
   call('getOrderFormData', p.edit || '').then(function (d) {
-    O = { edit: p.edit || '', products: d.products, beats: d.beats, salesmen: d.salesmen, admin: isAdmin(), salesman_id: '', beat_id: '', customer: null, customers: [], lines: [], date: '', month: today().slice(0, 7), po: '', remarks: '', status: '' };
+    O = { edit: p.edit || '', products: d.products, beats: d.beats, salesmen: d.salesmen, admin: isAdmin() || group() === 'CLERK', salesman_id: '', beat_id: '', customer: null, customers: [], lines: [], date: '', month: today().slice(0, 7), po: '', remarks: '', status: '', pay: '', shipSame: true, shipName: '', shipAddr: '', shipMobile: '' };
     if (d.order) {
-      O.salesman_id = d.order.salesman_id; O.beat_id = d.order.beat_id; O.date = d.order.requested_delivery_date || ''; O.po = d.order.customer_po; O.remarks = d.order.remarks; O.status = d.order.status;
+      O.salesman_id = d.order.salesman_id; O.beat_id = d.order.beat_id; O.date = d.order.requested_delivery_date || ''; O.po = d.order.customer_po; O.remarks = d.order.remarks; O.status = d.order.status; O.pay = d.order.payment_type || ''; O.shipSame = d.order.ship_same !== false && d.order.ship_same !== 'NO'; O.shipName = d.order.ship_name || ''; O.shipAddr = d.order.ship_address || ''; O.shipMobile = d.order.ship_mobile || '';
       if (O.date) O.month = O.date.slice(0, 7);
       O.lines = d.order.lines.map(function (l) { var pr = productById(l.sku_id) || {}; return { order_line_id: l.order_line_id, sku_id: l.sku_id, label: l.product_name, qty: l.qty, rate: l.rate, reason: l.price_override_reason, retail: pr.retail_price || l.master_rate, mrp: pr.mrp || l.mrp, case_pack: pr.case_pack || l.case_pack }; });
       O.preCustomer = d.order.customer_id;
@@ -1012,6 +1022,9 @@ function renderOrderForm() {
   html += '<div class="section"><div class="section-head"><h3>Products</h3><span class="muted small">Quantity in pieces (PCS)</span></div>' +
     searchBox('prodQ', 'Search product, brand or pack', 'renderProductPicker()') + '<div class="picker" id="prodPicker" style="margin-top:8px"></div><div id="ordLines" style="margin-top:10px"></div></div>';
   html += '<div class="section"><h3>Delivery date</h3><div id="ordCal">' + (O.customer ? '<div class="empty">Loading delivery days…</div>' : '<div class="muted small">Select the outlet to see available delivery days.</div>') + '</div></div>';
+  html += '<div class="section"><h3>Payment <em style="color:var(--bad)">*</em></h3><div class="seg" id="ordPay"><button type="button" class="' + (O.pay === 'CASH' ? 'on' : '') + '" onclick="O.pay=\'CASH\';renderOrderPay()">Cash &amp; carry</button><button type="button" class="' + (O.pay === 'CREDIT' ? 'on' : '') + '" onclick="O.pay=\'CREDIT\';renderOrderPay()">Credit</button></div><div class="muted small" id="ordPayNote" style="margin-top:6px">' + orderPayNote() + '</div></div>';
+  html += '<div class="section"><h3>Ship To <em style="color:var(--bad)">*</em></h3><div class="muted small" style="margin-bottom:6px">Is the Ship To the same as the Bill To (the outlet)?</div><div class="seg" id="ordShip"><button type="button" class="' + (O.shipSame ? 'on' : '') + '" onclick="O.shipSame=true;renderOrderShip()">Same as Bill To</button><button type="button" class="' + (!O.shipSame ? 'on' : '') + '" onclick="O.shipSame=false;renderOrderShip()">Different</button></div>' +
+    '<div id="ordShipBox" style="' + (O.shipSame ? 'display:none' : '') + ';margin-top:8px"><label>Ship To name<input id="shName" value="' + esc(O.shipName) + '" oninput="O.shipName=this.value"></label><label>Ship To address<textarea id="shAddr" rows="2" oninput="O.shipAddr=this.value">' + esc(O.shipAddr) + '</textarea></label><label>Ship To mobile (optional)<input id="shMob" inputmode="tel" value="' + esc(O.shipMobile) + '" oninput="O.shipMobile=this.value"></label><div class="muted small">Printed on the invoice only when it is different from Bill To.</div></div></div>';
   html += '<div class="section"><div class="grid2"><label class="field"><span>Customer PO</span><input oninput="O.po=this.value" value="' + attr(O.po) + '"></label><label class="field"><span>Remarks</span><input oninput="O.remarks=this.value" value="' + attr(O.remarks) + '"></label></div></div>';
   html += '<div class="total-bar"><span id="ordCount"></span><span class="v" id="ordTotal">₹0.00</span></div>';
   html += '<div class="sticky-actions">' + (!O.edit || O.status === 'DRAFT' ? '<button class="btn ghost" onclick="submitOrder(this,true)">Save draft</button>' : '<button class="btn ghost" onclick="back()">Cancel</button>') + '<button class="btn" style="flex:1" onclick="submitOrder(this,false)">' + (O.edit && O.status !== 'DRAFT' ? 'Save changes' : 'Submit order') + '</button></div>';
@@ -1052,7 +1065,7 @@ function renderProductPicker() {
   if (!q && O.lines.length) { el.style.display = 'none'; el.innerHTML = ''; if (!$('prodMore')) el.insertAdjacentHTML('afterend', ''); return; }
   el.style.display = '';
   el.innerHTML = rows.length ? rows.slice(0, 80).map(function (p) { var inOrder = O.lines.some(function (l) { return l.sku_id === p.sku_id; });
-    return '<button class="row' + (inOrder ? ' sel' : '') + '" onclick="addOrderLine(' + js(p.sku_id) + ')"><div class="m"><b>' + esc(p.label) + '</b><span>' + esc(p.brand) + ' · MRP ' + money(p.mrp) + ' · case ' + num(p.case_pack) + ' pcs</span></div><div class="r"><b>' + money(p.retail_price) + '</b>' + (inOrder ? '<span class="tiny muted">added</span>' : '') + '</div></button>'; }).join('')
+    return '<button class="row' + (inOrder ? ' sel' : '') + '" onclick="addOrderLine(' + js(p.sku_id) + ')">' + (p.d2c_image ? '<img class="pthumb" alt="" loading="lazy" src="' + attr(p.d2c_image) + '">' : '') + '<div class="m"><b>' + esc(p.label) + '</b><span>' + esc(p.brand) + ' · MRP ' + money(p.mrp) + ' · case ' + num(p.case_pack) + ' pcs</span></div><div class="r"><b>' + money(p.retail_price) + '</b>' + (inOrder ? '<span class="tiny muted">added</span>' : '') + '</div></button>'; }).join('')
     : emptyState('No product matches', 'Products come from the Product Master of ' + (S.boot.company || {}).company_name + '.');
 }
 function addOrderLine(sku) {
@@ -1122,11 +1135,16 @@ function drawCalendar() {
   $('ordCal').innerHTML = html;
 }
 function shiftMonth(n) { var d = new Date(O.month + '-01T00:00:00'); d.setMonth(d.getMonth() + n); O.month = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0'); loadCalendar(); }
+function orderPayNote() { return O.pay === 'CASH' ? 'Cash & carry: the outlet pays on delivery. Printed on the invoice; due date = invoice date.' : O.pay === 'CREDIT' ? 'Credit: due after the outlet\'s payment terms. Credit limit is checked.' : 'Ask the outlet: cash & carry or credit?'; }
+function renderOrderShip() { document.querySelectorAll('#ordShip button').forEach(function (b, i) { b.classList.toggle('on', (i === 0) === O.shipSame); }); var bx = $('ordShipBox'); if (bx) bx.style.display = O.shipSame ? 'none' : ''; }
+function renderOrderPay() { document.querySelectorAll('#ordPay button').forEach(function (b, i) { b.classList.toggle('on', (i === 0 ? 'CASH' : 'CREDIT') === O.pay); }); if ($('ordPayNote')) $('ordPayNote').textContent = orderPayNote(); }
 function submitOrder(btn, draft) {
   if (!O.customer) return toast('Select the outlet first.', 'bad');
   if (!draft && !O.lines.length) return toast('Add at least one product.', 'bad');
   if (!draft && !O.date) return toast('Pick a delivery date.', 'bad');
-  var payload = { order_id: O.edit, customer_id: O.customer.customer_id, salesman_id: O.salesman_id, beat_id: O.beat_id, requested_delivery_date: O.date, customer_po: O.po, remarks: O.remarks, draft: !!draft,
+  if (!draft && !O.pay) return toast('Select Cash & carry or Credit.', 'bad');
+  if (!draft && !O.shipSame && (!String(O.shipName || '').trim() || !String(O.shipAddr || '').trim())) return toast('Ship To is different: enter the ship-to name and address.', 'bad');
+  var payload = { order_id: O.edit, customer_id: O.customer.customer_id, salesman_id: O.salesman_id, beat_id: O.beat_id, requested_delivery_date: O.date, customer_po: O.po, remarks: O.remarks, payment_type: O.pay, ship_same: !!O.shipSame, ship_name: O.shipName, ship_address: O.shipAddr, ship_mobile: O.shipMobile, draft: !!draft,
     lines: O.lines.map(function (l) { return { order_line_id: l.order_line_id || '', sku_id: l.sku_id, qty: Number(l.qty), rate: Number(l.rate), price_override_reason: l.reason || '' }; }) };
   act(btn, draft ? 'Saving draft…' : 'Submitting…', function () { return call(O.edit ? 'updateOrder' : 'createOrder', payload); }).then(function (r) {
     S.cache.calendar = null; go('orderDetail', { id: r.order_id }, { replace: true });
@@ -1187,7 +1205,7 @@ VIEWS.orderDetail = function (p) {
       kpi('Delivered', o.delivered_value ? money(o.delivered_value) : '–', o.delivery_status ? cap(o.delivery_status) : '', o.delivery_status === 'FAILED' ? 'due' : '') +
       kpi('Invoiced', inv ? money(inv.invoice_value) : '–', inv ? esc(inv.invoice_number) + ' · ' + (inv.balance > 0 ? money0(inv.balance) + ' due' : 'paid') : '', 'sales') + '</div>';
     html += '<div class="section"><h3>Order</h3><dl class="kv"><dt>Outlet</dt><dd><button class="link" onclick="go(\'customer\',{id:' + js(o.customer_id) + '})">' + esc(o.customer_name) + '</button> · ' + esc(o.area) + '</dd><dt>Salesman</dt><dd>' + esc(o.salesman_name) + (o.order_source === 'ADMIN_PUNCHED' ? ' (punched by ' + esc(o.punched_by_name) + ')' : '') + '</dd><dt>Beat</dt><dd>' + esc(o.beat_name) + '</dd>' +
-      '<dt>Delivery date</dt><dd>' + (o.requested_delivery_date ? fdate(o.requested_delivery_date) + ' · ' + cap(o.delivery_day) : '–') + '</dd>' + (d.header.customer_po ? '<dt>Customer PO</dt><dd>' + esc(d.header.customer_po) + '</dd>' : '') +
+      '<dt>Delivery date</dt><dd>' + (o.requested_delivery_date ? fdate(o.requested_delivery_date) + ' · ' + cap(o.delivery_day) : '–') + '</dd>' + (d.header.payment_type ? '<dt>Payment</dt><dd><b>' + (d.header.payment_type === 'CASH' ? 'Cash & carry' : 'Credit') + '</b></dd>' : '') + (d.header.ship_same === false ? '<dt>Ship To</dt><dd><b>' + esc(d.header.ship_name) + '</b><br>' + esc(d.header.ship_address) + (d.header.ship_mobile ? '<br>Ph ' + esc(d.header.ship_mobile) : '') + '</dd>' : '') + (d.header.customer_po ? '<dt>Customer PO</dt><dd>' + esc(d.header.customer_po) + '</dd>' : '') +
       (o.backorder_of ? '<dt>Backorder of</dt><dd><button class="link" onclick="go(\'orderDetail\',{id:' + js(o.backorder_of) + '})">' + esc(o.backorder_of) + '</button></dd>' : '') + (d.header.remarks ? '<dt>Remarks</dt><dd>' + esc(d.header.remarks) + '</dd>' : '') +
       (o.cancel_reason ? '<dt>Cancelled</dt><dd>' + esc(o.cancel_reason) + '</dd>' : '') + '<dt>Revision</dt><dd>' + d.header.revision + '</dd></dl></div>';
     html += '<div class="section"><h3>Products</h3><div class="tbl-wrap"><table class="tbl"><tr><th>Product</th><th class="n">Ordered</th><th class="n">Price</th><th class="n">Supplied</th><th class="n">Delivered</th><th class="n">Value</th></tr>' +
@@ -1284,10 +1302,18 @@ VIEWS.deliveries = function () {
   call('getMyDeliveries').then(function (d) {
     S.cache.deliveries = d;
     var todo = d.rows.filter(function (r) { return r.stage === 'TO_DELIVER'; }), pod = d.rows.filter(function (r) { return r.stage === 'POD_PENDING'; });
-    setMain(head(group() === 'DELIVERY' ? 'My deliveries' : 'Deliveries', num(todo.length) + ' to deliver · ' + num(pod.length) + ' POD pending') +
+    setMain(head(group() === 'DELIVERY' ? 'My deliveries' : 'Deliveries', num(todo.length) + ' to deliver · ' + num(pod.length) + ' POD pending', '<button class="btn sm" onclick="downloadDispatchSheet(this)">Download Excel</button>') +
       '<div class="section"><h3>To deliver</h3>' + deliveryRows(todo) + '</div><div class="section"><h3>Delivered – POD pending</h3>' + deliveryRows(pod) + '</div>');
   }, failed);
 };
+function downloadDispatchSheet(btn) {
+  act(btn, 'Preparing…', function () {
+    return call('getDispatchSheet', {}).then(function (r) {
+      if (!r.rows.length) return { message: 'No dispatched deliveries to download.' };
+      return loadSheetJs().then(function (XLSX) { XLSX.writeFile(reportWorkbook(XLSX, Object.assign({ plain: true }, r)), r.file_name); return { message: '✓ ' + r.file_name + ' downloaded.' }; });
+    });
+  }).catch(swallow);
+}
 function deliveryRows(rows) {
   if (!rows.length) return emptyState('Nothing here', '');
   return '<div class="rows">' + rows.map(function (r) {
@@ -1520,6 +1546,26 @@ function submitClosing(btn) {
   document.querySelectorAll('.mrs').forEach(function (s) { var note = document.querySelector('.mrr[data-cid="' + s.dataset.cid + '"]'); missed.push({ customer_id: s.dataset.cid, reason: s.value, remarks: note ? note.value : '' }); });
   act(btn, 'Submitting…', function () { return call('submitDailyClosing', { date: d.date, missed: missed, remarks: val('clRem') }); }).then(refresh, swallow);
 }
+
+/* ---------- V7.7 my beats: a salesman asks for a new beat, Admin approves it ---------- */
+VIEWS.myBeats = function () {
+  Promise.all([call('listBeats', { salesman_id: S.boot.user.user_id }), call('listPendingBeats')]).then(function (r) {
+    var live = r[0], pend = r[1];
+    var row = function (b, st) { return '<div class="row static"><div class="m"><b>' + esc(b.beat_name) + '</b><span>' + esc([b.territory, b.days.map(function (d) { return cap(d).slice(0, 3); }).join(' '), b.outlets != null ? num(b.outlets) + ' outlets' : ''].filter(Boolean).join(' · ')) + '</span></div>' + chip(st || b.status) + '</div>'; };
+    setMain(head('My beats', num(live.length) + ' live' + (pend.length ? ' · ' + num(pend.length) + ' waiting for approval' : '') + ' · ' + companyLine(), '<button class="btn sm" onclick="openMyBeatForm()">New beat</button>') +
+      '<div class="note small" style="margin-bottom:12px">A new beat goes live after Admin approves it. You will get a notification.</div>' +
+      (pend.length ? '<div class="section"><h3>Waiting for approval</h3><div class="rows">' + pend.map(function (b) { return row(b, 'PENDING'); }).join('') + '</div></div>' : '') +
+      '<div class="section"><h3>Live beats</h3>' + (live.length ? '<div class="rows">' + live.map(function (b) { return row(b); }).join('') + '</div>' : emptyState('No beats yet', 'Tap New beat to add your first route.')) + '</div>');
+  }, failed);
+};
+function openMyBeatForm() {
+  openModal('<h3>New beat</h3><div class="form" id="mbF"><div class="note small">' + companyLine() + ' · goes to Admin for approval</div>' +
+    '<div class="grid2"><label class="field"><span>Beat name <em>*</em></span><input name="beat_name"></label><label class="field"><span>Territory / area</span><input name="territory"></label></div>' +
+    '<div class="field"><span>Working days <em>*</em></span><div class="days">' + L('DAYS').map(function (d) { return '<label><input type="checkbox" name="days" data-multi="1" value="' + d + '">' + cap(d).slice(0, 3) + '</label>'; }).join('') + '</div></div>' +
+    '<label class="field"><span>Route (areas in order)</span><input name="route_sequence"></label>' +
+    '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="mbOk">Send for approval</button></div></div>');
+  $('mbOk').onclick = function () { var v = formVals('mbF'); act(this, 'Sending…', function () { return call('saveBeat', v); }).then(function () { closeModal(); refresh(); }, swallow); };
+}
 </script>
 
 <script>
@@ -1730,13 +1776,17 @@ VIEWS.approvals = function () {
     can('payment.approve') ? call('listPayments', { status: 'PENDING' }) : Promise.resolve({ rows: [] }),
     can('adjustment.approve') ? call('listAdjustments', { status: 'PENDING' }) : Promise.resolve([]),
     can('expense.approve') ? call('listExpenses', { status: 'PENDING', month: 'ALL' }) : Promise.resolve({ rows: [] }),
-    can('transport.approve') ? call('listTransport', { status: 'PENDING', month: 'ALL' }) : Promise.resolve({ rows: [] })
+    can('transport.approve') ? call('listTransport', { status: 'PENDING', month: 'ALL' }) : Promise.resolve({ rows: [] }),
+    can('beat.manage') ? call('listPendingBeats') : Promise.resolve([]),
+    can('note.post') ? call('listNotes', { status: 'DRAFT' }) : Promise.resolve({ rows: [] })
   ];
   Promise.all(jobs).then(function (r) {
-    var outlets = r[0], pays = r[1].rows, adjs = r[2], exps = r[3].rows, trs = r[4].rows;
-    var total = outlets.length + pays.length + adjs.length + exps.length + trs.length;
+    var outlets = r[0], pays = r[1].rows, adjs = r[2], exps = r[3].rows, trs = r[4].rows, beats = r[5], notes = r[6].rows;
+    var total = outlets.length + pays.length + adjs.length + exps.length + trs.length + beats.length + notes.length;
     var html = head('Approvals', total ? num(total) + ' waiting · ' + companyLine() : 'Nothing waiting · ' + companyLine());
     if (can('customer.approve')) html += '<div class="section"><h3>New retail outlets</h3>' + (outlets.length ? '<div class="rows">' + outlets.map(function (c) { return '<div class="row static"><div class="m"><b>' + esc(c.customer_name) + '</b><span>' + esc([c.area, c.beat_name, c.salesman_name, c.mobile].filter(Boolean).join(' · ')) + '</span></div><div class="actions"><button class="btn sm ghost" onclick="go(\'customer\',{id:' + js(c.customer_id) + '})">View</button><button class="btn sm ok" onclick="approveOutlet(' + js(c.customer_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveOutlet(' + js(c.customer_id) + ',false)">Reject</button></div></div>'; }).join('') + '</div>' : emptyState('No outlets waiting', '')) + '</div>';
+    if (can('beat.manage')) html += '<div class="section"><h3>New beats</h3>' + (beats.length ? '<div class="rows">' + beats.map(function (b) { return '<div class="row static"><div class="m"><b>' + esc(b.beat_name) + '</b><span>' + esc([b.salesman_name, b.territory, b.days.map(function (d) { return cap(d).slice(0, 3); }).join(' '), b.route_sequence, fdate(b.created_at)].filter(Boolean).join(' · ')) + '</span></div><div class="actions"><button class="btn sm ok" onclick="approveBeatUi(' + js(b.beat_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveBeatUi(' + js(b.beat_id) + ',false)">Reject</button></div></div>'; }).join('') + '</div>' : emptyState('No beats waiting', '')) + '</div>';
+    if (can('note.post') && notes.length) html += '<div class="section"><h3>Credit / debit notes to post</h3><div class="rows">' + notes.map(function (n) { return '<div class="row static"><div class="m"><b>' + esc(n.customer_name) + ' · ' + money(n.note_value) + '</b><span>' + esc([cap(n.note_type) + ' note', n.invoice_number, cap(n.reason_type), fdate(n.note_date)].filter(Boolean).join(' · ')) + '</span></div><div class="actions"><button class="btn sm ghost" onclick="openNoteDetail(' + js(n.note_id) + ')">Open</button></div></div>'; }).join('') + '</div></div>';
     if (can('payment.approve')) html += '<div class="section"><h3>Collections to verify</h3>' + (pays.length ? '<div class="rows">' + pays.map(function (p) { return '<div class="row static"><div class="m"><b>' + esc(p.customer_name) + ' · ' + money(p.amount) + '</b><span>' + esc([fdate(p.payment_date), cap(p.mode), p.reference_no || p.cheque_no, 'by ' + p.received_by_name, cap(p.payment_nature)].filter(Boolean).join(' · ')) + '</span></div><div class="actions">' + (p.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(p.proof) + '">Proof</a>' : '') + '<button class="btn sm ok" onclick="approvePaymentUi(' + js(p.payment_id) + ',true)">Verify</button><button class="btn sm danger" onclick="approvePaymentUi(' + js(p.payment_id) + ',false)">Reject</button></div></div>'; }).join('') + '</div>' : emptyState('No collections waiting', '')) + '</div>';
     if (can('adjustment.approve')) html += '<div class="section"><h3>Invoice adjustments</h3>' + (adjs.length ? '<div class="rows">' + adjs.map(function (a) { return '<div class="row static"><div class="m"><b>' + esc(a.invoice_number) + ' · ' + money(a.amount) + '</b><span style="white-space:normal">' + esc(a.customer_name + ' · ' + cap(a.type) + ' – ' + a.reason + ' · by ' + a.requested_by) + '</span></div><div class="actions">' + (a.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(a.proof) + '">Proof</a>' : '') + '<button class="btn sm ok" onclick="approveAdjUi(' + js(a.adjustment_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveAdjUi(' + js(a.adjustment_id) + ',false)">Reject</button></div></div>'; }).join('') + '</div>' : emptyState('No adjustments waiting', '')) + '</div>';
     if (can('expense.approve')) html += '<div class="section"><h3>Expenses</h3>' + (exps.length ? '<div class="rows">' + exps.map(function (e) { return '<div class="row static"><div class="m"><b>' + esc(e.employee) + ' · ' + money(e.amount) + '</b><span style="white-space:normal">' + esc(fdate(e.date) + ' · ' + cap(e.category) + ' – ' + e.description) + '</span></div><div class="actions">' + (e.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(e.proof) + '">Bill</a>' : '') + '<button class="btn sm ok" onclick="approveExpenseUi(' + js(e.expense_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveExpenseUi(' + js(e.expense_id) + ',false)">Reject</button></div></div>'; }).join('') + '</div>' : emptyState('No expenses waiting', '')) + '</div>';
@@ -1747,6 +1797,10 @@ VIEWS.approvals = function () {
 function approveOutlet(id, ok) {
   if (ok) return act(null, '', function () { return call('approveCustomer', id, true, ''); }).then(refresh, swallow);
   askReason('Reject outlet', null, { danger: true, okLabel: 'Reject' }).then(function (r) { act(null, '', function () { return call('approveCustomer', id, false, r.reason); }).then(refresh, swallow); });
+}
+function approveBeatUi(id, ok) {
+  if (ok) return act(null, '', function () { return call('approveBeat', id, true, ''); }).then(refresh, swallow);
+  askReason('Reject beat', null, { danger: true, okLabel: 'Reject' }).then(function (r) { act(null, '', function () { return call('approveBeat', id, false, r.reason); }).then(refresh, swallow); });
 }
 function approveExpenseUi(id, ok) {
   if (ok) return act(null, '', function () { return call('approveExpense', id, true, ''); }).then(refresh, swallow);
@@ -1760,7 +1814,7 @@ function approveTransportUi(id, ok) {
 
 <script>
 /* =========================== ADMIN CENTRE =========================== */
-var ADMIN_TABS = [['users', 'Users'], ['profile', 'Business profile'], ['companies', 'Companies'], ['products', 'Products'], ['beats', 'Beats'], ['schedules', 'Delivery days'], ['config', 'Settings'], ['quality', 'Data quality'], ['audit', 'Audit log'], ['system', 'System']];
+var ADMIN_TABS = [['users', 'Users'], ['profile', 'Business profile'], ['companies', 'Companies'], ['products', 'Products'], ['beats', 'Beats'], ['schedules', 'Delivery days'], ['config', 'Settings'], ['quality', 'Data quality'], ['audit', 'Audit log'], ['system', 'System'], ['cleanup', 'Clean test data']];
 function adminTabs(t) { return '<div class="tabs">' + ADMIN_TABS.map(function (x) { return '<button class="' + (x[0] === t ? 'on' : '') + '" onclick="go(\'admin\',{tab:\'' + x[0] + '\'},{replace:true})">' + x[1] + '</button>'; }).join('') + '</div>'; }
 VIEWS.admin = function (p) {
   var t = (p && p.tab) || 'users'; S.params = { tab: t };
@@ -1876,7 +1930,7 @@ ADMIN_VIEWS.products = function () {
 function filterProducts() {
   var q = val('prQ').toLowerCase(), rows = (S.cache.products || []).filter(function (p) { return !q || (p.label + p.brand + p.sku_id).toLowerCase().indexOf(q) >= 0; });
   $('prTbl').innerHTML = '<tr><th>Product</th><th class="n">MRP</th><th class="n">Retail</th><th class="n">Distributor</th><th class="n">Case</th><th>Status</th><th></th></tr>' + rows.map(function (p) {
-    return '<tr><td>' + esc(p.label) + '<div class="tiny muted">' + esc(p.sku_id + ' · ' + p.brand) + '</div></td><td class="n">' + money(p.mrp) + '</td><td class="n"><b>' + money(p.retail_price) + '</b></td><td class="n">' + money(p.distributor_price) + '</td><td class="n">' + num(p.case_pack) + '</td><td>' + chip(p.status) + (p.d2c_active ? ' ' + chip('ACTIVE', 'Home ' + money(p.d2c_price || p.mrp)) : '') + '</td><td><button class="btn sm ghost" onclick="openProductForm(' + js(p.sku_id) + ')">Edit</button> <button class="btn sm ghost" onclick="productStatusUi(' + js(p.sku_id) + ',' + js(p.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE') + ')">' + (p.status === 'ACTIVE' ? 'Deactivate' : 'Activate') + '</button></td></tr>';
+    return '<tr><td>' + esc(p.label) + '<div class="tiny muted">' + esc(p.sku_id + ' · ' + p.brand) + '</div></td><td class="n">' + money(p.mrp) + '</td><td class="n"><b>' + money(p.retail_price) + '</b></td><td class="n">' + money(p.distributor_price) + '</td><td class="n">' + num(p.case_pack) + '</td><td>' + chip(p.status) + (p.d2c_active ? ' ' + chip('ACTIVE', 'Home ' + money(p.d2c_price || p.mrp) + (p.d2c_slot === 'EVENING' ? ' · evening' : ' · morning')) + (p.d2c_offer_price ? ' ' + chip('PENDING', 'Offer ' + money(p.d2c_offer_price)) : '') : '') + '</td><td><button class="btn sm ghost" onclick="openProductForm(' + js(p.sku_id) + ')">Edit</button> <button class="btn sm ghost" onclick="productStatusUi(' + js(p.sku_id) + ',' + js(p.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE') + ')">' + (p.status === 'ACTIVE' ? 'Deactivate' : 'Activate') + '</button></td></tr>';
   }).join('');
 }
 function openProductForm(id) {
@@ -1886,8 +1940,13 @@ function openProductForm(id) {
     '<div class="grid3"><label class="field"><span>MRP</span><input name="mrp" type="number" step="0.01" value="' + attr(p.mrp) + '"></label><label class="field"><span>Retail price <em>*</em></span><input name="retail_price" type="number" step="0.01" value="' + attr(p.retail_price) + '"></label><label class="field"><span>Distributor price</span><input name="distributor_price" type="number" step="0.01" value="' + attr(p.distributor_price) + '"></label></div>' +
     '<div class="grid3"><label class="field"><span>Case pack (pcs)</span><input name="case_pack" type="number" step="1" value="' + attr(p.case_pack) + '"></label><label class="field"><span>GST % <em>*</em></span><select name="gst">' + opts([0, 5, 12, 18, 28, 40].map(function (g) { return { value: g, label: g + '%' }; }), p.sku_id ? p.gst : '', 'Select') + '</select></label><label class="field"><span>HSN <em>*</em></span><input name="hsn" inputmode="numeric" maxlength="8" value="' + attr(p.hsn) + '"></label></div><div class="tiny muted">Retail price includes GST. GST rate and HSN are required to invoice.</div>' +
     '<div class="grid2" style="margin-top:6px"><label class="check"><input type="checkbox" name="d2c_active"' + (p.d2c_active ? ' checked' : '') + '> Show in home-delivery shop (households)</label><label class="field"><span>Home delivery price incl. GST (blank = MRP)</span><input name="d2c_price" type="number" step="0.01" value="' + attr(p.d2c_price || '') + '"></label></div>' +
+    '<div class="grid3"><label class="field"><span>Delivered in</span><select name="d2c_slot">' + opts([{ value: 'MORNING', label: 'Morning slot' }, { value: 'EVENING', label: 'Evening slot' }], p.d2c_slot || 'MORNING') + '</select></label><label class="field"><span>Offer price ₹ (blank = no offer)</span><input name="d2c_offer_price" type="number" step="0.01" value="' + attr(p.d2c_offer_price || '') + '"></label><label class="field"><span>Offer till (blank = until removed)</span><input name="d2c_offer_till" type="date" value="' + attr(p.d2c_offer_till || '') + '"></label></div>' +
+    '<div class="grid2"><label class="field"><span>Label in shop (e.g. Bestseller, New)</span><input name="d2c_tag" maxlength="20" value="' + attr(p.d2c_tag || '') + '"></label><div class="field"><span>Product picture (optional)</span><div style="display:flex;gap:10px;align-items:center">' + (p.d2c_image ? '<img alt="" src="' + attr(p.d2c_image) + '" style="width:56px;height:56px;border-radius:10px;object-fit:cover;background:#eee">' : '') + '<input type="file" id="pImg" accept="image/*" style="flex:1;min-width:0"></div>' + (p.d2c_image ? '<label class="check" style="margin-top:4px"><input type="checkbox" id="pImgDel"> Remove picture</label>' : '') + '<input type="hidden" name="d2c_image" value="' + attr(p.d2c_image || '') + '"></div></div>' +
     (id ? '<label class="field"><span>Reason for price change</span><input name="change_reason"></label>' : '') + '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="pOk">Save product</button></div></div>');
-  $('pOk').onclick = function () { var v = formVals('pF'); v.sku_id = id || ''; act(this, 'Saving…', function () { return call('saveProduct', v); }).then(function () { closeModal(); refresh(); }, swallow); };
+  $('pOk').onclick = function () { var v = formVals('pF'); v.sku_id = id || ''; act(this, 'Saving…', function () { return call('saveProduct', v).then(function (r) {
+      var sku = r.sku_id || id, del = $('pImgDel') && $('pImgDel').checked;
+      return readFile('pImg', 700).then(function (f) { if (f && sku) return call('saveProductImage', sku, f.data, f.name, f.mime).then(function () { return r; }); if (del && sku) return call('saveProductImage', sku, '').then(function () { return r; }); return r; });
+    }); }).then(function () { closeModal(); refresh(); }, swallow); };
 }
 function productStatusUi(id, st) { askReason(st === 'ACTIVE' ? 'Activate product' : 'Deactivate product', null, {}).then(function (r) { act(null, '', function () { return call('setProductStatus', id, st, r.reason); }).then(refresh, swallow); }); }
 
@@ -1987,6 +2046,26 @@ ADMIN_VIEWS.system = function () {
       '<div class="section"><div class="tbl-wrap"><table class="tbl"><tr><th>Table</th><th>Sheet</th><th class="n">Rows</th><th>Missing columns</th></tr>' + h.tables.map(function (t) { return '<tr><td>' + esc(t.table) + '</td><td>' + (t.exists ? esc(t.sheet) : chip('FAILED', 'Missing')) + '</td><td class="n">' + num(t.rows) + '</td><td>' + esc(t.missing_columns.join(', ') || '–') + '</td></tr>'; }).join('') + '</table></div></div>');
   }, failed);
 };
+ADMIN_VIEWS.cleanup = function () {
+  call('getCleanupPreview').then(function (r) {
+    S.cache.cleanup = r;
+    var dflt = { SALES: true };
+    adminPage('cleanup', 'Remove test / dummy data before going live', '',
+      '<div class="note warn" style="margin-bottom:12px"><b>This cannot be undone from the app.</b> A backup copy of your spreadsheet is saved to Google Drive first. Companies, users, outlets, products, beats, vehicles, settings, communities and households are never deleted.</div>' +
+      '<div class="section"><div class="rows">' + r.groups.map(function (g) {
+        return '<label class="row static" style="cursor:pointer"><input type="checkbox" class="clG" value="' + attr(g.group) + '"' + (dflt[g.group] ? ' checked' : '') + ' style="margin-right:10px"><div class="m" style="white-space:normal"><b>' + esc(g.label) + '</b><span>' + (g.rows ? num(g.rows) + ' rows: ' + esc(g.tables.map(function (t) { return t.table + ' ' + t.rows; }).join(', ')) : 'Nothing to remove') + '</span></div></label>';
+      }).join('') + '</div></div>' +
+      '<div class="section"><div class="form"><label class="field"><span>Type <b>DELETE DATA</b> to confirm</span><input id="clConf" autocomplete="off"></label><div class="actions"><button class="btn danger" onclick="runCleanup(this)">Delete selected data</button></div></div></div>' +
+      '<div class="muted small">Invoice numbers start again from 1 for the cleaned sections. If you also clean Purchases / Stock, enter the real opening stock and purchase bills afterwards.</div>');
+  }, failed);
+};
+function runCleanup(btn) {
+  var g = [].map.call(document.querySelectorAll('.clG:checked'), function (x) { return x.value; });
+  if (!g.length) return toast('Tick what to remove.', 'bad');
+  act(btn, 'Backing up and cleaning…', function () { return call('cleanupData', g, val('clConf')); }).then(function (r) {
+    openModal('<h3>Done</h3><div class="note good">' + esc(r.message) + '</div><div class="small" style="margin-top:8px">' + esc(r.removed.join(' · ')) + '</div><div class="small" style="margin-top:8px">Backup: ' + r.backups.map(function (u) { return '<a target="_blank" href="' + attr(u) + '">open</a>'; }).join(' · ') + '</div><div class="actions end"><button class="btn" onclick="closeModal();refresh()">OK</button></div>');
+  }, swallow);
+}
 function repairDb(btn) { act(btn, 'Repairing…', function () { return call('repairDatabase'); }).then(refresh, swallow); }
 </script>
 <script>
@@ -2010,7 +2089,8 @@ function enqSet(id) {
 <script>
 /* Shared by the staff app and the customer page: GST invoice / credit note layout (A4 half page or full page). */
 function m2(v) { return Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function docHtml(d) {
+function docHtml(d, mode) {
+  if (d.html) return d.html[mode && d.html[mode] ? mode : (d.default_mode || 'GST')] || d.html.GST;
   var s = d.seller, inter = d.inter_state;
   var rows = d.lines.map(function (l) { return '<tr><td>' + l.sr + '</td><td>' + esc(l.product_name) + '</td><td>' + esc(l.hsn) + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + m2(l.rate_incl) + '</td><td class="n">' + l.gst_rate + '%</td><td class="n">' + m2(l.taxable) + '</td><td class="n">' + m2(l.cgst + l.sgst + l.igst) + '</td><td class="n">' + m2(l.gross) + '</td></tr>'; }).join('');
   var tax = d.tax_summary.map(function (r) { return '<tr><td>' + r.rate + '%</td><td class="n">' + m2(r.taxable) + '</td>' + (inter ? '<td class="n">' + m2(r.igst) + '</td>' : '<td class="n">' + m2(r.cgst) + '</td><td class="n">' + m2(r.sgst) + '</td>') + '</tr>'; }).join('');
@@ -2099,7 +2179,7 @@ function renderNoteForm() {
           (qty ? '<td><select class="nfBk" data-line="' + attr(l.line_id) + '">' + opts([{ value: 'SALEABLE', label: 'Back to saleable' }, { value: 'DAMAGED', label: 'Damaged' }, { value: 'NONE', label: 'Not returned' }], e.stock_bucket || (['DAMAGED IN TRANSIT', 'EXPIRY RETURN'].indexOf(NF.reason_type) >= 0 ? 'DAMAGED' : 'SALEABLE')) + '</select></td>' : '') + '</tr>';
       }).join('') + '</table></div>' + (!qty && credit ? '<div class="actions" style="margin-top:8px"><label class="small">Spread a total across lines <input type="number" id="nfSpread" step="0.01" style="width:120px;min-height:36px"></label><button class="btn sm ghost" onclick="spreadNote()">Spread</button></div>' : '') + '</div>';
     html += '<div class="total-bar"><span>' + (credit ? 'Credit note value' : 'Debit note value') + '</span><span class="v" id="nfTotal">₹0.00</span></div>';
-    html += '<div class="sticky-actions"><button class="btn ghost" onclick="saveNoteUi(this,false)">Save draft</button>' + '<button class="btn" style="flex:1" onclick="saveNoteUi(this,true)">Post ' + (credit ? 'credit' : 'debit') + ' note</button></div>';
+    html += '<div class="sticky-actions"><button class="btn ghost" onclick="saveNoteUi(this,false)">Save draft</button>' + '<button class="btn" style="flex:1" onclick="saveNoteUi(this,true)">' + (can('note.post') ? 'Post ' : 'Send for approval – ') + (credit ? 'credit' : 'debit') + ' note</button></div>';
   }
   setMain(html); if (NF.reason_type) noteTotal();
 }
@@ -2142,7 +2222,7 @@ function openNoteDetail(id) {
       '<div class="tbl-wrap"><table class="tbl"><tr><th>Product</th><th class="n">Qty</th><th class="n">Taxable</th><th class="n">GST</th><th class="n">Amount</th><th>Stock</th></tr>' + d.lines.map(function (l) { return '<tr><td>' + esc(l.product_name) + '</td><td class="n">' + (l.qty || '–') + '</td><td class="n">' + money(l.taxable) + '</td><td class="n">' + money(l.cgst + l.sgst + l.igst) + '</td><td class="n">' + money(l.gross) + '</td><td>' + (l.stock_bucket === 'NONE' ? '–' : cap(l.stock_bucket)) + '</td></tr>'; }).join('') + '</table></div>' +
       '<div class="total-bar"><span>' + chip(n.status) + '</span><span class="v">' + money(n.note_value) + '</span></div><div class="actions end">' +
       '<button class="btn ghost" onclick="closeModal()">Close</button>' + (n.status === 'POSTED' ? '<button class="btn ghost" onclick="closeModal();printDoc(' + js(n.note_type === 'CREDIT' ? 'CN' : 'DN') + ',' + js(n.note_id) + ')">Print</button>' : '') +
-      (draft && can('note.create') ? '<button class="btn ghost" onclick="closeModal();go(\'noteForm\',{invoice_id:' + js(n.invoice_id) + ',note_id:' + js(n.note_id) + '})">Edit</button><button class="btn" id="ndPost">Post note</button>' : '') +
+      (draft && can('note.create') ? '<button class="btn ghost" onclick="closeModal();go(\'noteForm\',{invoice_id:' + js(n.invoice_id) + ',note_id:' + js(n.note_id) + '})">Edit</button>' + (can('note.post') ? '<button class="btn" id="ndPost">Post note</button>' : '<span class="muted small">Waiting for Admin / Accounts to post</span>') : '') +
       ((draft && can('note.create')) || (n.status === 'POSTED' && can('note.cancel')) ? '<button class="btn danger" id="ndCancel">Cancel note</button>' : '') + '</div>');
     if ($('ndPost')) $('ndPost').onclick = function () { act(this, 'Posting…', function () { return call('postNote', id); }).then(function () { closeModal(); refresh(); }, swallow); };
     if ($('ndCancel')) $('ndCancel').onclick = function () { closeModal(); askReason('Cancel note', null, { danger: true, okLabel: 'Cancel note' }).then(function (r) { act(null, '', function () { return call('cancelNote', id, r.reason); }).then(refresh, swallow); }); };
@@ -2150,15 +2230,32 @@ function openNoteDetail(id) {
 }
 
 /* ----------------------------- printing ----------------------------- */
-function printDoc(type, id) {
+function printDoc(type, id, mode) {
   (/^D2C/.test(type) ? call('d2cPrint', type, id) : call('getDocumentPrint', type, id)).then(function (d) {
-    $('printArea').innerHTML = docHtml(d);
-    $('pageStyle').textContent = '@page { size: A4 portrait; margin: 8mm; }';
+    var st = { mode: (mode && d.html && d.html[mode]) ? mode : (d.default_mode || 'GST'), ledger: false };
     S.cache.lastPrint = { type: type, id: id };
-    openModal('<h3>' + esc(d.title) + ' ' + esc(d.number) + '</h3><div class="note small" style="margin-bottom:10px">' + (d.layout === 'HALF' ? 'Fits on half an A4 sheet.' : 'Printed on a full A4 page (' + d.lines.length + ' lines).') + ' In the print dialog choose your printer, or "Save as PDF" to share.</div>' +
-      '<div style="border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:55vh;background:#fff"><div style="transform-origin:top left;width:194mm">' + docHtml(d) + '</div></div>' +
-      '<div class="actions end" style="margin-top:12px"><button class="btn ghost" onclick="closeModal()">Close</button>' + (!/^D2C/.test(type) && (can('invoice.create') || can('note.create')) ? '<button class="btn ghost" id="pdfDrive">Save PDF to Drive</button>' : '') + '<button class="btn" onclick="window.print()">Print / Save PDF</button></div>');
-    if ($('pdfDrive')) $('pdfDrive').onclick = function () { act(this, 'Saving…', function () { return call('saveDocumentPdf', type, id); }).then(function (r) { if (r && r.url) window.open(r.url, '_blank'); }, swallow); };
+    var both = d.html && d.html.RETAIL;
+    var render = function () {
+      var body = docHtml(d, st.mode) + (st.ledger && d.html && d.html.LEDGER ? d.html.LEDGER : '');
+      $('printArea').innerHTML = body;
+      $('pageStyle').textContent = '@page { size: A4 portrait; margin: 8mm; }';
+      if ($('pvBox')) { $('pvBox').innerHTML = body; var w = $('pvBox').parentNode.clientWidth - 20; $('pvBox').style.zoom = w > 0 && w < 735 ? (w / 735).toFixed(3) : 1; }
+      document.querySelectorAll('#pvMode button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-m') === st.mode); });
+      if ($('pvNote')) $('pvNote').textContent = st.mode === 'RETAIL' ? 'Retail invoice: price incl. GST and total – half A4 sheet.' : 'GST invoice: full A4 page with HSN, taxable value and CGST / SGST / IGST.';
+    };
+    openModal('<h3>' + esc(d.title) + ' ' + esc(d.number) + '</h3>' +
+      (both ? '<div class="seg" id="pvMode" style="margin-bottom:8px"><button type="button" data-m="GST">GST invoice (full page)</button><button type="button" data-m="RETAIL">Retail invoice</button></div>' : '') +
+      (d.html && d.html.LEDGER ? '<label class="chk" style="display:flex;gap:6px;align-items:center;margin-bottom:8px"><input type="checkbox" id="pvLedger" style="width:auto;height:auto;flex:none"> Print ledger (account statement) on the back</label>' : '') +
+      (type === 'INV' && can('invoice.create') && d.status !== 'CANCELLED' ? '<div class="row" style="gap:6px;align-items:flex-end;margin-bottom:8px;flex-wrap:wrap"><label style="flex:1;min-width:150px">E-way bill no. (optional, 12 digits)<input id="pvEw" inputmode="numeric" maxlength="12" value="' + esc(d.eway && d.eway.no || '') + '"></label><label style="min-width:130px">E-way bill date<input id="pvEwD" type="date" value="' + esc(String(d.eway && d.eway.date || '').slice(0, 10)) + '"></label><button class="btn ghost" id="pvEwSave" type="button">Save E-way bill</button></div>' : '') +
+      '<div class="note small" id="pvNote" style="margin-bottom:8px"></div>' +
+      '<div style="border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:55vh;background:#fff;padding:4mm"><div id="pvBox" style="width:194mm"></div></div>' +
+      '<div class="actions end" style="margin-top:12px"><button class="btn ghost" onclick="closeModal()">Close</button>' + (!/^D2C/.test(type) && (can('invoice.create') || can('note.create')) ? '<button class="btn ghost" id="pdfDrive">Save PDF to Drive</button>' : '') + (d.buyer && d.buyer.mobile && d.type === 'INV' ? '<a class="btn ghost wa" target="_blank" rel="noopener" href="' + attr(waLink(d.buyer.mobile, 'Dear ' + d.buyer.name + ', ' + (d.title === 'TAX INVOICE' ? 'invoice' : 'bill') + ' ' + d.number + ' dated ' + fdate(d.date) + ' for ' + money(d.total) + (d.payment_type === 'CASH' ? ' (cash & carry)' : d.due_date ? ' is due on ' + fdate(d.due_date) : '') + '.' + (d.upi_id ? ' UPI: ' + d.upi_id : '') + ' – ' + (d.seller.seller_trade_name || d.seller.seller_legal_name))) + '">WhatsApp</a>' : '') + '<button class="btn" id="pvPrint">Print / Save PDF</button></div>');
+    document.querySelectorAll('#pvMode button').forEach(function (b) { b.onclick = function () { st.mode = b.getAttribute('data-m'); render(); }; });
+    if ($('pvEwSave')) $('pvEwSave').onclick = function () { act(this, 'Saving…', function () { return call('saveEwayBill', id, $('pvEw').value, $('pvEwD').value); }).then(function () { closeModal(); printDoc(type, id, st.mode); }, swallow); };
+    if ($('pvLedger')) $('pvLedger').onchange = function () { st.ledger = this.checked; render(); };
+    $('pvPrint').onclick = function () { render(); window.print(); };
+    render();
+    if ($('pdfDrive')) $('pdfDrive').onclick = function () { act(this, 'Saving…', function () { return call('saveDocumentPdf', type, id, st.mode); }).then(function (r) { if (r && r.url) window.open(r.url, '_blank'); }, swallow); };
   }, showErr);
 }
 </script>
@@ -2314,7 +2411,7 @@ function reportHint(id) {
     company_secondary: 'Net sales by outlet, product and beat – share with the principal', outlet_ledger: 'Statement of one outlet with opening and closing balance',
     outstanding: 'Outlet-wise and invoice-wise with ageing buckets', collections: 'All collections with mode, reference and allocation', purchase_register: 'Bills from the principal with input GST',
     stock_summary: 'Opening, in, out, closing, reserved, damaged, value', stock_ledger: 'Every movement of one product', gstr1: 'b2b, b2cl, b2cs, cdnr, cdnur, HSN, documents – GST Offline Tool columns',
-    gstr3b: 'Outward tax, nil-rated, input tax credit, net payable', hsn_summary: 'HSN-wise quantity, value and tax (B2B and B2C)' })[id] || '';
+    gstr3b: 'Outward tax, nil-rated, input tax credit, net payable', profit_loss: 'Sales − cost of goods − expenses = net profit (before GST)', balance_sheet: 'Cash, bank, receivables, stock, payables and capital', payables: 'What you owe the company, with ageing', cash_book: 'Cash and bank in / out, day by day', gross_margin: 'Product-wise profit', hsn_summary: 'HSN-wise quantity, value and tax (B2B and B2C)' })[id] || '';
 }
 VIEWS.report = function (p) {
   var defs = S.cache.reportDefs;
@@ -2331,6 +2428,7 @@ VIEWS.report = function (p) {
       if (def.params.indexOf('salesman_id') >= 0 && r.salesmen.length) f += '<label class="field"><span>Salesman</span><select name="salesman_id">' + opts(r.salesmen, p.salesman_id, 'All salesmen', 'user_id', 'name') + '</select></label>';
       if (needCust) f += '<label class="field wide"><span>Retail outlet</span><select name="customer_id">' + opts(x[0], p.customer_id, 'Select outlet', 'customer_id', 'customer_name') + '</select></label>';
       if (needSku) f += '<label class="field wide"><span>Product</span><select name="sku_id">' + opts(x[1], p.sku_id, 'Select product', 'sku_id', 'label') + '</select></label>';
+      if (isAdmin() && S.boot.companies.length > 1 && !needCust && !needSku) f += '<label class="field"><span>Company</span><select name="company"><option value="">' + esc((S.boot.company || {}).company_name || 'Current company') + ' (current)</option><option value="ALL"' + (p.company === 'ALL' ? ' selected' : '') + '>All companies – combined</option></select></label>';
       f += '<div class="actions wide"><button class="btn" onclick="runReportUi(this,' + js(def.id) + ')">Show report</button></div></div>';
       setMain(head(def.name, esc(reportHint(def.id))) + f + '<div id="rpOut"></div>');
       if (p.run) runReportUi(null, def.id);
@@ -2450,14 +2548,14 @@ function d2cPayChip(s) { return s ? chip(s === 'PART' ? 'PARTIAL' : s, D2C_PAY[s
 function homeLabel(o) { return [o.flat, o.tower].filter(Boolean).join(' · ') || '—'; }
 function D2C_TABS() {
   return [['day', 'Orders', can('d2c.view')], ['homes', 'Households', can('d2c.view')], ['payments', 'Payments', can('d2c.view')], ['dues', 'Dues', can('d2c.view')],
-    ['communities', 'Communities', can('d2c.view')], ['settings', 'Settings', can('d2c.admin')]].filter(function (t) { return t[2]; });
+    ['complaints', 'Complaints', can('d2c.feedback')], ['communities', 'Communities', can('d2c.view')], ['settings', 'Settings', can('d2c.admin')]].filter(function (t) { return t[2]; });
 }
 function d2cTabs(on) { return '<div class="tabs">' + D2C_TABS().map(function (t) { return '<button class="' + (t[0] === on ? 'on' : '') + '" onclick="go(\'d2c\',{tab:\'' + t[0] + '\'},{replace:true})">' + t[1] + '</button>'; }).join('') + '</div>'; }
 
 VIEWS.d2c = function (p) {
   p = p || {};
   var tab = p.tab || 'day';
-  ({ day: d2cDayTab, homes: d2cHomesTab, payments: d2cPaymentsTab, dues: d2cDuesTab, communities: d2cCommunitiesTab, settings: d2cSettingsTab }[tab] || d2cDayTab)(p);
+  ({ day: d2cDayTab, homes: d2cHomesTab, payments: d2cPaymentsTab, dues: d2cDuesTab, complaints: d2cComplaintsTab, communities: d2cCommunitiesTab, settings: d2cSettingsTab }[tab] || d2cDayTab)(p);
 };
 
 /* ------------------------------ Orders of a day ------------------------------ */
@@ -2474,7 +2572,7 @@ function d2cDayTab(p) {
     var b = d.batch;
     if (b) {
       html += '<div class="note good" style="margin-bottom:12px"><b>✓ Confirmed</b> – ' + num(b.orders) + ' homes · ' + money0(b.value) + (b.orders ? ' · invoices ' + esc(b.invoices_from) + ' – ' + esc(b.invoices_to) : '') + '<div class="tiny">' + fdatetime(b.locked_at) + ' by ' + esc(b.locked_by) + (b.exported_at ? ' · Excel downloaded ' + fdatetime(b.exported_at) : '') + (b.imported_at ? ' · delivery Excel uploaded ' + fdatetime(b.imported_at) : '') + '</div>' +
-        '<div class="actions" style="margin-top:8px">' + (can('d2c.batch') ? '<button class="btn sm" onclick="d2cDownload(this,' + js(d.date) + ')">Download Excel for company</button><button class="btn sm ghost" onclick="d2cUploadDeliveries(' + js(d.date) + ')">Upload delivery Excel</button>' : '') +
+        '<div class="actions" style="margin-top:8px">' + (can('d2c.batch') ? '<button class="btn sm" onclick="d2cDownload(this,' + js(d.date) + ')">Download Excel for company</button><button class="btn sm ghost" onclick="d2cDownload(this,' + js(d.date) + ',\'OWN\')">Our team list</button><button class="btn sm ghost" onclick="d2cUploadDeliveries(' + js(d.date) + ')">Upload delivery Excel</button>' : '') +
         (can('d2c.deliver') ? '<button class="btn sm ghost" onclick="go(\'d2cDeliver\',{date:' + js(d.date) + '})">Delivery screen</button>' : '') + '</div></div>';
     } else if (d.past_cutoff) {
       html += '<div class="note warn" style="margin-bottom:12px"><b>Ordering closed</b> at ' + esc(d.deadline) + '. ' + (d.auto_lock ? 'Orders are confirmed automatically within 15 minutes.' : 'Confirm the orders to make the invoices and the Excel for the company.') +
@@ -2506,7 +2604,7 @@ function d2cLoadDay(first) {
   }, showErr);
 }
 function d2cOrderRow(o) {
-  return '<button class="row" onclick="d2cOpenOrder(' + js(o.order_id) + ')"><div class="m"><b>' + esc(homeLabel(o)) + ' · ' + esc(o.name) + '</b><span>' + esc(o.community) + (o.invoice_number ? ' · ' + esc(o.invoice_number) : '') + ' · ' + cap(o.source) + '</span><span>' + esc(o.items_text) + '</span></div>' +
+  return '<button class="row" onclick="d2cOpenOrder(' + js(o.order_id) + ')"><div class="m"><b>' + esc(homeLabel(o)) + ' · ' + esc(o.name) + '</b><span>' + (o.slot === 'EVENING' ? '🌙 Evening' : '☀️ Morning') + ' · ' + esc(o.community) + (o.invoice_number ? ' · ' + esc(o.invoice_number) : '') + ' · ' + cap(o.source) + '</span><span>' + esc(o.items_text) + '</span></div>' +
     '<div class="r"><b>' + money(o.invoice_value || o.order_value) + '</b>' + d2cStChip(o.status) + ' ' + d2cPayChip(o.pay_status) + '</div></button>';
 }
 function d2cLock(btn, date, early) {
@@ -2515,10 +2613,10 @@ function d2cLock(btn, date, early) {
   openModal('<h3>Confirm orders early?</h3><div class="note warn">Customers can still order for ' + fdate(date) + ' until the cut-off. After confirming early nobody can change these orders and the invoices are made now.</div><div class="actions end" style="margin-top:12px"><button class="btn ghost" onclick="closeModal()">Back</button><button class="btn danger" id="dlOk">Confirm now</button></div>');
   $('dlOk').onclick = function () { closeModal(); run(); };
 }
-function d2cDownload(btn, date) {
+function d2cDownload(btn, date, who) {
   act(btn, 'Preparing…', function () {
-    return call('d2cExport', date).then(function (r) {
-      return loadSheetJs().then(function (XLSX) { XLSX.writeFile(reportWorkbook(XLSX, r), r.file_name); return { message: '✓ ' + r.file_name + ' downloaded – send it to the company.' }; });
+    return call('d2cExport', date, false, who || 'COMPANY').then(function (r) {
+      return loadSheetJs().then(function (XLSX) { XLSX.writeFile(reportWorkbook(XLSX, r), r.file_name); return { message: '✓ ' + r.file_name + ' downloaded' + (who === 'OWN' ? ' – for our delivery team.' : ' – send it to the company.') }; });
     });
   }).then(function () { refresh(); }, swallow);
 }
@@ -2697,7 +2795,7 @@ function d2cHomeSet(st) {
   if (st === 'BLOCKED') askReason('Block household', null, { danger: true, okLabel: 'Block' }).then(function (r) { run(r.reason); }); else run('');
 }
 function d2cQtyRows(catalog, current) {
-  return catalog.map(function (pr) { var q = current[pr.sku_id] || 0; return '<div class="line"><div class="top"><b>' + esc(pr.name) + (pr.pack ? ' <span class="muted">' + esc(pr.pack) + '</span>' : '') + '</b><span class="num">' + money(pr.price) + '</span></div><div class="stepper" style="margin-top:6px"><button type="button" onclick="stepQ(this,-1)">−</button><input type="number" min="0" max="99" step="1" inputmode="numeric" class="oq" data-sku="' + attr(pr.sku_id) + '" data-price="' + pr.price + '" value="' + q + '" oninput="oqTotal()"><button type="button" onclick="stepQ(this,1)">+</button></div></div>'; }).join('');
+  return catalog.map(function (pr) { var q = current[pr.sku_id] || 0; return '<div class="line"><div class="top"><b>' + esc(pr.name) + (pr.pack ? ' <span class="muted">' + esc(pr.pack) + '</span>' : '') + ' <span class="tiny muted">' + (pr.slot === 'EVENING' ? 'evening' : 'morning') + '</span></b><span class="num">' + money(pr.price) + (pr.mrp > pr.price ? ' <s class="muted">' + money(pr.mrp) + '</s>' : '') + '</span></div><div class="stepper" style="margin-top:6px"><button type="button" onclick="stepQ(this,-1)">−</button><input type="number" min="0" max="99" step="1" inputmode="numeric" class="oq" data-sku="' + attr(pr.sku_id) + '" data-price="' + pr.price + '" value="' + q + '" oninput="oqTotal()"><button type="button" onclick="stepQ(this,1)">+</button></div></div>'; }).join('');
 }
 function stepQ(b, d) { var i = b.parentNode.querySelector('input'); i.value = Math.max(0, Math.min(99, (Number(i.value) || 0) + d)); oqTotal(); }
 function oqTotal() { var t = 0; document.querySelectorAll('.oq').forEach(function (i) { t += (Number(i.value) || 0) * Number(i.dataset.price); }); if ($('oqT')) $('oqT').textContent = money(t); }
@@ -2808,10 +2906,34 @@ function d2cDuesTab(p) {
     html += '<div class="kpis">' + kpi('Total due', money0(r.total), num(r.homes) + ' homes', r.total ? 'due' : 'sales') + '</div>';
     html += '<div class="filters"><label class="field wide"><span>Search</span><input value="' + attr(p.q || '') + '" placeholder="Flat, name, mobile" onkeydown="if(event.key===\'Enter\')go(\'d2c\',{tab:\'dues\',q:this.value},{replace:true})"></label><div class="actions" style="align-self:end"><button class="btn sm ghost" onclick="go(\'report\',{id:\'d2c_dues\',run:true})">Excel</button></div></div>';
     html += '<div class="section">' + (r.rows.length ? '<div class="rows">' + r.rows.map(function (x) {
-      return '<button class="row" onclick="go(\'d2cHome\',{id:' + js(x.customer_id) + '})"><div class="m"><b>' + esc([x.flat, x.tower].filter(Boolean).join(' · ') + ' · ' + x.name) + '</b><span>' + esc(x.community) + ' · ' + esc(x.mobile) + ' · ' + num(x.unpaid_count) + ' unpaid' + (x.days !== '' ? ' · oldest ' + num(x.days) + ' days' : '') + '</span></div><div class="r"><b>' + money(x.due) + '</b>' + (x.pending ? '<span class="tiny muted">' + money(x.pending) + ' to check</span>' : '') + '</div></button>';
+      var msg = 'Hello ' + x.name + ', your ' + (r.shop_name || 'home delivery') + ' bill of ' + money(x.due) + ' (' + num(x.unpaid_count) + ' deliveries) is due.' + (r.upi_id ? ' Please pay by UPI to ' + r.upi_id : '') + (r.shop_url ? ' or on ' + r.shop_url : '') + '. Thank you!';
+      return '<div class="row static"><div class="m" style="cursor:pointer" onclick="go(\'d2cHome\',{id:' + js(x.customer_id) + '})"><b>' + esc([x.flat, x.tower].filter(Boolean).join(' · ') + ' · ' + x.name) + '</b><span>' + esc(x.community) + ' · ' + esc(x.mobile) + ' · ' + num(x.unpaid_count) + ' unpaid' + (x.days !== '' ? ' · oldest ' + num(x.days) + ' days' : '') + '</span></div><div class="r"><b>' + money(x.due) + '</b>' + (x.pending ? '<span class="tiny muted">' + money(x.pending) + ' to check</span>' : '') + (x.mobile ? '<a class="btn sm wa" target="_blank" rel="noopener" href="' + attr(waLink(x.mobile, msg)) + '">WhatsApp</a>' : '') + '</div></div>';
     }).join('') + '</div>' : emptyState('No dues', 'Every delivered order is paid.')) + '</div>';
     setMain(html);
   }, failed);
+}
+
+/* ------------------------------ V7.7 Complaints & feedback ------------------------------ */
+function d2cComplaintsTab(p) {
+  call('d2cListFeedback', { status: p.status || 'OPEN', kind: p.kind || '' }).then(function (r) {
+    S.cache.fb = r.rows;
+    var html = head('Direct (D2C) home delivery', 'Complaints, feedback and suggestions from households') + d2cTabs('complaints');
+    html += '<div class="kpis">' + kpi('Open', num(r.open), num(r.complaints_open) + ' complaints', r.complaints_open ? 'due' : 'sales') + kpi('Average rating', r.ratings ? r.avg_rating.toFixed(1) + ' ★' : '–', num(r.ratings) + ' ratings', 'sales') + '</div>';
+    html += '<div class="tabs">' + [['OPEN', 'Open'], ['RESOLVED', 'Resolved'], ['ALL', 'All']].map(function (t) { return '<button class="' + ((p.status || 'OPEN') === t[0] ? 'on' : '') + '" onclick="go(\'d2c\',{tab:\'complaints\',status:\'' + t[0] + '\'},{replace:true})">' + t[1] + '</button>'; }).join('') + '</div>';
+    html += '<div class="section">' + (r.rows.length ? '<div class="rows">' + r.rows.map(function (f, i) {
+      return '<div class="row static"><div class="m"><b>' + (f.kind === 'COMPLAINT' ? '⚠ ' : '') + esc(f.feedback_id + ' · ' + f.name) + (f.rating ? ' · ' + '★'.repeat(f.rating) : '') + '</b><span>' + esc([f.created_at, cap(f.kind), cap(f.category), f.address].filter(Boolean).join(' · ')) + '</span><span style="white-space:normal">' + esc(f.message) + '</span>' + (f.resolution ? '<span style="white-space:normal"><b>Done:</b> ' + esc(f.resolution) + ' (' + esc(f.handled_by) + ')</span>' : '') + '</div>' +
+        '<div class="r">' + chip(f.status) + '<div class="actions" style="margin-top:4px;flex-wrap:wrap;justify-content:flex-end">' + (f.photo_url ? '<a class="btn sm ghost" target="_blank" href="' + attr(f.photo_url) + '">Photo</a>' : '') + (f.whatsapp ? '<a class="btn sm wa" target="_blank" rel="noopener" href="' + attr(f.whatsapp) + '">WhatsApp</a>' : '') + (f.mobile ? '<a class="btn sm ghost" href="tel:' + attr(f.mobile) + '">Call</a>' : '') +
+        (['OPEN', 'IN_PROGRESS'].indexOf(f.status) >= 0 ? '<button class="btn sm" onclick="d2cFbResolve(' + i + ')">Resolve</button>' : '') + '</div></div></div>';
+    }).join('') + '</div>' : emptyState('Nothing here', 'Households use the Help tab on the dairy page to send complaints and feedback.')) + '</div>';
+    setMain(html);
+  }, failed);
+}
+function d2cFbResolve(i) {
+  var f = S.cache.fb[i];
+  openModal('<h3>' + esc(f.feedback_id) + ' · ' + esc(f.name) + '</h3><div class="note small" style="white-space:normal">' + esc(f.message) + '</div><div class="form" style="margin-top:10px"><label class="field"><span>Status</span><select id="fbSt">' + opts([['IN_PROGRESS', 'In progress'], ['RESOLVED', 'Resolved'], ['CLOSED', 'Closed (no action)']].map(function (x) { return { value: x[0], label: x[1] }; }), 'RESOLVED', undefined, 'value', 'label') + '</select></label>' +
+    '<label class="field"><span>What was done (customer sees this)</span><textarea id="fbRes" rows="3" placeholder="e.g. Replaced 2 packets of milk on 10 Oct; credit note issued."></textarea></label>' +
+    '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="fbOk">Save</button></div></div>');
+  $('fbOk').onclick = function () { act(this, 'Saving…', function () { return call('d2cResolveFeedback', f.feedback_id, val('fbSt'), val('fbRes')); }).then(function () { closeModal(); refresh(); }, swallow); };
 }
 
 /* ------------------------------ Communities ------------------------------ */
@@ -2830,12 +2952,13 @@ function d2cCommForm(c) {
   c = c || {};
   openModal('<h3>' + (c.community_id ? 'Edit community' : 'Add community') + '</h3><div class="form" id="cmF"><label class="field"><span>Name <em>*</em></span><input name="name" value="' + attr(c.name) + '"></label><div class="grid3"><label class="field"><span>Short code</span><input name="code" value="' + attr(c.code) + '"></label><label class="field"><span>Area</span><input name="area" value="' + attr(c.area) + '"></label><label class="field"><span>PIN code</span><input name="pincode" inputmode="numeric" value="' + attr(c.pincode) + '"></label></div>' +
     '<label class="field"><span>Towers / wings (comma separated)</span><input name="towers" value="' + attr(c.towers) + '" placeholder="A, B, C"></label><div class="grid2"><label class="field"><span>City</span><input name="city" value="' + attr(c.city) + '"></label><label class="field"><span>Status</span><select name="status">' + opts(['ACTIVE', 'INACTIVE'], c.status || 'ACTIVE') + '</select></label></div>' +
+    '<label class="field"><span>Gate location (latitude, longitude or Google Maps link)</span><input name="location" value="' + attr(c.location) + '" placeholder="12.9716, 77.5946"><small>Used for the Google Maps link in our team\'s delivery list.</small></label>' +
     '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="cmOk">Save</button></div></div>');
   $('cmOk').onclick = function () { var v = formVals('cmF'); v.community_id = c.community_id || ''; act(this, 'Saving…', function () { return call('d2cSaveCommunity', v); }).then(function () { closeModal(); refresh(); }, swallow); };
 }
 
 /* ------------------------------ Settings ------------------------------ */
-var D2C_SET_LABELS = { public_app_url: 'App address (where index.html / shop.html are hosted, e.g. https://arhaanagencies.github.io/app)', d2c_shop_name: 'Shop name (shown to customers)', d2c_support_phone: 'Support phone (shown to customers)', d2c_cutoff_time: 'Order cut-off time (24h, e.g. 13:00)', d2c_cutoff_days_before: 'Cut-off is how many days before delivery',
+var D2C_SET_LABELS = { d2c_morning_by: 'Who delivers the MORNING slot (milk, curd, paneer): COMPANY = company staff get the Excel, OWN = our team', d2c_evening_by: 'Who delivers the EVENING slot (ghee, honey …): COMPANY or OWN', d2c_whatsapp: 'WhatsApp number for customers (chat button on the dairy page)', d2c_slot_morning: 'Morning delivery time shown to customers', d2c_slot_evening: 'Evening delivery time shown to customers', public_app_url: 'App address (where index.html / shop.html are hosted, e.g. https://arhaanagencies.github.io/app)', d2c_shop_name: 'Shop name (shown to customers)', d2c_support_phone: 'Support phone (shown to customers)', d2c_cutoff_time: 'Order cut-off time (24h, e.g. 13:00)', d2c_cutoff_days_before: 'Cut-off is how many days before delivery',
   d2c_days_ahead: 'Customers can order up to … days ahead', d2c_closed_dates: 'Holidays – no delivery (dates, comma separated)', d2c_min_order_value: 'Minimum order value ₹ (0 = none)', d2c_auto_approve: 'Approve self-registrations automatically (YES/NO)',
   d2c_pod_photo_required: 'Delivery photo required (YES/NO)', d2c_payment_proof_required: 'UPI screenshot required (YES/NO)', d2c_cash_allowed: 'Cash allowed (YES/NO)', d2c_upi_id: 'UPI ID for payments (VPA)', d2c_upi_name: 'Payee name on UPI', d2c_session_days: 'Customer stays logged in for … days' };
 function d2cSettingsTab() {
@@ -2843,16 +2966,29 @@ function d2cSettingsTab() {
     var html = head('Direct (D2C) home delivery', 'Settings') + d2cTabs('settings');
     html += '<div class="section"><h3>Customer shop link</h3>' + (s.shop_url ? '<div class="note"><b>' + esc(s.shop_url) + '</b><div class="actions" style="margin-top:6px"><button class="btn sm ghost" onclick="navigator.clipboard&&navigator.clipboard.writeText(' + js(s.shop_url) + ').then(function(){toast(\'Link copied\',\'good\')})">Copy link</button><a class="btn sm ghost" target="_blank" href="' + attr(s.shop_url) + '">Open</a></div></div>' : '<div class="note">Your web-app link followed by <b>?p=shop</b> – e.g. https://script.google.com/macros/s/…/exec?p=shop</div>') +
       '<div class="tiny muted" style="margin-top:6px">Share it on the community WhatsApp groups. Households register once with mobile number + PIN.</div></div>';
-    html += '<div class="section"><h3>Rules</h3><div class="form" id="sF">' + s.values.map(function (v) { return '<label class="field"><span>' + esc(D2C_SET_LABELS[v.key] || v.key) + '</span><input name="' + attr(v.key) + '" value="' + attr(v.value) + '" placeholder="' + attr(v.default_value) + '"></label>'; }).join('') +
+    var bv = s.values.filter(function (v) { return v.key === 'd2c_banners'; })[0];
+    try { S.cache.banners = JSON.parse((bv && bv.value) || '[]'); } catch (e) { S.cache.banners = []; }
+    html += '<div class="section"><div class="section-head"><h3>Shop banners</h3><button class="btn sm ghost" onclick="bnAdd()">Add banner</button></div><div class="small muted" style="margin-bottom:8px">Shown at the top of the customer page. When none are set, banners are made automatically from your offers and delivery times.</div><div id="bnList"></div><div class="actions" style="margin-top:8px"><button class="btn sm" onclick="bnSave(this)">Save banners</button></div></div>';
+    html += '<div class="section"><h3>Rules</h3><div class="form" id="sF">' + s.values.filter(function (v) { return v.key !== 'd2c_banners'; }).map(function (v) { return '<label class="field"><span>' + esc(D2C_SET_LABELS[v.key] || v.key) + '</span><input name="' + attr(v.key) + '" value="' + attr(v.value) + '" placeholder="' + attr(v.default_value) + '"></label>'; }).join('') +
       '<div class="actions"><button class="btn" onclick="act(this,\'Saving…\',function(){return call(\'d2cSaveSettings\',formVals(\'sF\'))}).then(refresh,swallow)">Save settings</button></div></div></div>';
     html += '<div class="section"><h3>Automatic confirmation at the cut-off</h3><div class="note ' + (s.auto_lock ? 'good' : 'warn') + '">' + (s.auto_lock ? 'ON – every 15 minutes the app confirms any date whose cut-off has passed and makes the invoices.' : 'OFF – someone must press "Confirm orders" every day after the cut-off.') + '</div>' +
       '<div class="actions" style="margin-top:8px"><button class="btn sm' + (s.auto_lock ? ' ghost' : '') + '" onclick="act(this,\'Saving…\',function(){return call(\'d2cSetAutoLock\',' + (!s.auto_lock) + ')}).then(refresh,swallow)">' + (s.auto_lock ? 'Switch off' : 'Switch on') + '</button></div></div>';
     html += '<div class="section"><h3>Data size</h3><div class="note small">' + (s.separate_book ? '✓ Home-delivery data is kept in its own spreadsheet.' : 'Home-delivery data is in the main spreadsheet. With hundreds of homes every day, move it to its own spreadsheet <b>before going live</b> so the main database stays fast.') + '</div>' +
       '<div class="actions" style="margin-top:8px">' + (s.separate_book ? '' : '<button class="btn sm ghost" onclick="act(this,\'Creating…\',function(){return call(\'d2cCreateSpreadsheet\')}).then(refresh,swallow)">Create separate spreadsheet</button>') +
       '<button class="btn sm ghost" onclick="d2cArchiveUi(this)">Archive old months…</button></div></div>';
-    setMain(html);
+    setMain(html); bnDraw();
   }, failed);
 }
+function bnDraw() {
+  var l = S.cache.banners;
+  $('bnList').innerHTML = l.length ? l.map(function (b, i) {
+    return '<div class="line"><div class="grid2"><label class="field"><span>Title</span><input value="' + attr(b.title) + '" oninput="S.cache.banners[' + i + '].title=this.value" maxlength="60"></label><label class="field"><span>Colour</span><select onchange="S.cache.banners[' + i + '].theme=this.value">' + opts([['BLUE', 'Blue'], ['GOLD', 'Gold'], ['GREEN', 'Green'], ['ROSE', 'Rose']].map(function (x) { return { value: x[0], label: x[1] }; }), b.theme || 'BLUE') + '</select></label></div>' +
+      '<label class="field"><span>Text</span><input value="' + attr(b.text) + '" oninput="S.cache.banners[' + i + '].text=this.value" maxlength="140"></label><div class="grid2"><label class="field"><span>Show till (optional)</span><input type="date" value="' + attr(b.till) + '" oninput="S.cache.banners[' + i + '].till=this.value"></label><label class="field"><span>Picture link (optional)</span><input value="' + attr(b.image) + '" oninput="S.cache.banners[' + i + '].image=this.value"></label></div>' +
+      '<div class="actions end"><button class="btn sm ghost danger" onclick="S.cache.banners.splice(' + i + ',1);bnDraw()">Remove</button></div></div>';
+  }).join('') : '<div class="muted small">No banners – automatic banners are shown.</div>';
+}
+function bnAdd() { if (S.cache.banners.length >= 6) return toast('Up to 6 banners.', 'bad'); S.cache.banners.push({ title: '', text: '', theme: 'BLUE', till: '', image: '' }); bnDraw(); }
+function bnSave(btn) { act(btn, 'Saving…', function () { return call('d2cSaveSettings', { d2c_banners: JSON.stringify(S.cache.banners.filter(function (b) { return b.title; })) }); }).then(refresh, swallow); }
 function d2cArchiveUi(btn) {
   openModal('<h3>Archive old months</h3><div class="note small">Finished orders, verified payments and credit notes older than the chosen number of full months move to an archive spreadsheet. GST figures of those months and every household\'s balance are kept, so GSTR-1 / 3B and dues stay correct. Do this only after the GST returns of those months are filed.</div>' +
     '<label class="field" style="margin-top:10px"><span>Keep the last … months</span><select id="arM">' + opts([2, 3, 4, 6, 12].map(function (n) { return { value: n, label: n + ' months' }; }), 3) + '</select></label><div class="actions end" style="margin-top:10px"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="arOk">Archive</button></div>');
@@ -2862,12 +2998,15 @@ function d2cArchiveUi(btn) {
 /* ========================= DELIVERY SCREEN (company's delivery staff / operations) ========================= */
 VIEWS.d2cDeliver = function (p) {
   p = p || {};
-  call('d2cDeliveryList', { date: p.date || '', community_id: p.community_id || '', tower: p.tower || '', status: p.status || 'PENDING', q: p.q || '' }).then(function (d) {
+  if (!p.slot) p.slot = new Date().getHours() < 15 ? 'MORNING' : 'EVENING';
+  call('d2cDeliveryList', { date: p.date || '', slot: p.slot, community_id: p.community_id || '', tower: p.tower || '', status: p.status || 'PENDING', q: p.q || '' }).then(function (d) {
     S.cache.dl = d; S.cache.dlp = p;
     var comm = d.communities.filter(function (c) { return c.community_id === p.community_id; })[0];
     var html = head('Home deliveries', fdate(d.date) + ' · ' + num(d.pending) + ' of ' + num(d.total) + ' to deliver');
     html += '<div class="filters"><label class="field"><span>Date</span><input type="date" value="' + attr(d.date) + '" onchange="d2cDl({date:this.value})"></label><label class="field"><span>Community</span><select onchange="d2cDl({community_id:this.value,tower:\'\'})">' + opts(d.communities, p.community_id, 'All', 'community_id', 'name') + '</select></label>' +
       (comm && comm.towers.length ? '<label class="field"><span>Tower</span><select onchange="d2cDl({tower:this.value})">' + opts(comm.towers, p.tower, 'All') + '</select></label>' : '') + '</div>';
+    if (d.my_slots.indexOf(p.slot) < 0 && d.my_slots.length) { p.slot = d.my_slots[0]; return d2cDl({ slot: p.slot }); }
+    html += '<div class="seg" style="margin-bottom:10px">' + d.my_slots.map(function (sl) { return '<button type="button" class="' + (p.slot === sl ? 'on' : '') + '" onclick="d2cDl({slot:\'' + sl + '\'})">' + (sl === 'MORNING' ? '☀️ Morning' : '🌙 Evening') + ' (' + d.slot_counts[sl] + ')<div class="tiny muted">' + esc(d.slots[sl]) + ' · ' + (d.slot_by[sl] === 'OWN' ? 'our team' : 'company staff') + '</div></button>'; }).join('') + '</div>';
     html += '<div class="tabs">' + [['PENDING', 'To deliver'], ['DONE', 'Done'], ['ALL', 'All']].map(function (t) { return '<button class="' + ((p.status || 'PENDING') === t[0] ? 'on' : '') + '" onclick="d2cDl({status:\'' + t[0] + '\'})">' + t[1] + '</button>'; }).join('') + '</div>';
     html += searchBox('dlQ', 'Flat, name, invoice', 'clearTimeout(window._dlq);window._dlq=setTimeout(function(){d2cDl({q:val(\'dlQ\')})},400)');
     html += '<div class="section" style="margin-top:10px">' + (d.rows.length ? '<div class="rows">' + d.rows.map(function (o) {

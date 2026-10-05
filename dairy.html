@@ -222,6 +222,10 @@ input[readonly]{background:var(--paper)}
 .note.good{background:var(--green-2);color:#13603C}
 .tabs{display:flex;gap:4px;background:var(--line-2);padding:4px;border-radius:12px;margin-bottom:12px;overflow-x:auto}
 .tabs button{flex:1;white-space:nowrap;background:none;border:0;font:inherit;font-size:14px;padding:8px 12px;border-radius:9px;color:var(--ink-2);cursor:pointer}
+.tabs{scrollbar-width:none;scroll-snap-type:x proximity;-webkit-overflow-scrolling:touch;-webkit-mask-image:linear-gradient(90deg,#000 88%,transparent);mask-image:linear-gradient(90deg,#000 88%,transparent)}
+.tabs::-webkit-scrollbar{display:none}
+.tabs button{scroll-snap-align:center}
+@media (max-width:480px){.tabs button{flex:0 0 auto;font-size:13px;padding:8px 11px}.page-head h1{font-size:21px}.row .m b{overflow-wrap:anywhere}.filters select,.filters input{min-width:0;width:100%}.actions.end .btn,.actions .btn.sm{white-space:nowrap}}
 .tabs button.on{background:var(--surface);color:var(--ink);font-weight:600;box-shadow:var(--shadow)}
 .filters{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:12px}
 @media (min-width:800px){.filters{grid-template-columns:repeat(4,1fr)}}
@@ -295,6 +299,8 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--
 
 /* ---------- GST documents (screen preview + print) ---------- */
 #printArea{display:none}
+.pthumb{width:44px;height:44px;border-radius:8px;object-fit:cover;flex:none;margin-right:10px;background:var(--line-2)}
+.btn.wa{background:#25D366;border-color:#25D366;color:#fff}
 .doc{font-family:Arial,Helvetica,sans-serif;font-size:8.6pt;line-height:1.3;color:#000;background:#fff;padding:2mm 3mm;width:194mm;box-sizing:border-box}
 .doc .doc-top{display:flex;align-items:baseline;justify-content:space-between;margin-bottom:1.5mm}
 .doc .doc-title{font-size:12pt;font-weight:700;letter-spacing:.06em}
@@ -343,7 +349,10 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--
 /* Customer ordering page – builds on AppCss */
 body.shop .main.shop-main{max-width:640px;padding:14px 14px 104px}
 body.shop .bottom{max-width:none}
-body.shop .bottom button{font-size:11.5px}
+body.shop .bottom button{font-size:10.5px;min-width:0;padding:6px 1px}body.shop .bottom button span{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:100%}
+.btn.wa{background:#25D366;border-color:#25D366;color:#fff}
+.stars{display:flex;gap:4px}.stars button{font-size:28px;line-height:1;background:none;border:0;color:#ccc;cursor:pointer;padding:2px}.stars button.on{color:#f5a623}
+
 .hero{background:var(--ink);color:#fff;border-radius:var(--r-l);padding:16px;margin-bottom:12px}
 .hero b{display:block;font-size:18px}
 .hero span{color:#C9D2E8;font-size:14px}
@@ -379,6 +388,30 @@ body.shop .bottom button{font-size:11.5px}
 .pill{display:inline-block;background:var(--line-2);border-radius:20px;padding:3px 10px;font-size:13px;margin:2px}
 .gate-logo{width:56px;height:56px;border-radius:14px;background:#fff;border:1px solid var(--line);display:grid;place-items:center;padding:4px}
 .gate-logo img{width:100%;height:100%;object-fit:contain}
+.slot-head{display:flex;align-items:center;gap:10px;margin:18px 0 4px;padding:10px 12px;border-radius:12px}
+.slot-head b{display:block;font-size:15px}
+.slot-head span{display:block;font-size:13px}
+.slot-head.morning{background:#FFF5DC;color:#7A4F00}
+.slot-head.evening{background:#E9EDFB;color:#22357A}
+.prod .pimg{width:56px;height:56px;border-radius:10px;object-fit:cover;flex:none;background:var(--line-2)}
+.prod .price s{color:var(--muted);font-weight:400;font-size:13px;margin-left:4px}
+.prod .off{white-space:nowrap;font-style:normal;font-size:12px;font-weight:700;color:#13603C;background:var(--green-2);border-radius:6px;padding:1px 6px;margin-left:4px}
+.prod .m b .tag{display:inline-block;font-size:11px;font-weight:700;color:#8A5A00;background:var(--amber-2);border-radius:6px;padding:1px 6px;vertical-align:2px}
+.banners{display:flex;gap:10px;overflow-x:auto;scroll-snap-type:x mandatory;padding:2px 0 12px;scrollbar-width:none}
+.banners::-webkit-scrollbar{display:none}
+.banner{flex:none;width:86%;max-width:420px;scroll-snap-align:start;border-radius:16px;padding:16px;display:flex;gap:12px;align-items:center;min-height:104px}
+.banner img{width:72px;height:72px;border-radius:12px;object-fit:cover;flex:none}
+.banner b{display:block;font-size:17px;line-height:1.25}
+.banner span{display:block;font-size:13.5px;margin-top:4px;opacity:.9}
+.banner small{display:block;font-size:12px;margin-top:6px;opacity:.8}
+.banner.blue{background:#1F4FD1;color:#fff}
+.banner.gold{background:#F2B21B;color:#2A1C00}
+.banner.green{background:#1E8E5A;color:#fff}
+.banner.rose{background:#FCE4E4;color:#7A1F1F}
+.login-card .banners{margin-top:14px;max-width:100%}
+body.shop .login{grid-template-columns:minmax(0,1fr)}
+body.shop .login-card{min-width:0;max-width:100%}
+.login-card .banner{width:92%}
 </style>
 
 </head>
@@ -433,7 +466,7 @@ function showErr(e) { toast((e && e.message) || String(e), 'bad'); }
 function swallow() {}
 function openModal(h) { $('sheet').innerHTML = h; $('modal').classList.add('open'); }
 function closeModal() { $('modal').classList.remove('open'); $('sheet').innerHTML = ''; }
-function chip(s, label) { var t = { PLACED: 'blue', CONFIRMED: 'blue', DELIVERED: 'green', PARTIAL: 'amber', NOT_DELIVERED: 'red', CANCELLED: 'red', PAID: 'green', VERIFYING: 'amber', PART: 'amber', UNPAID: 'red', PENDING: 'amber', VERIFIED: 'green', REJECTED: 'red', ACTIVE: 'green', PAUSED: 'amber', ENDING: 'amber' }[s] || ''; return '<span class="chip ' + t + '">' + esc(label || cap(s)) + '</span>'; }
+function chip(s, label) { var t = { PLACED: 'blue', CONFIRMED: 'blue', DELIVERED: 'green', PARTIAL: 'amber', NOT_DELIVERED: 'red', CANCELLED: 'red', PAID: 'green', VERIFYING: 'amber', PART: 'amber', UNPAID: 'red', PENDING: 'amber', VERIFIED: 'green', REJECTED: 'red', ACTIVE: 'green', PAUSED: 'amber', ENDING: 'amber', OPEN: 'amber', IN_PROGRESS: 'amber', RESOLVED: 'green' }[s] || ''; return '<span class="chip ' + t + '">' + esc(label || cap(s)) + '</span>'; }
 var ST = { PLACED: 'Ordered', CONFIRMED: 'Confirmed', DELIVERED: 'Delivered', PARTIAL: 'Part delivered', NOT_DELIVERED: 'Not delivered', CANCELLED: 'Cancelled' };
 var PAYST = { PAID: 'Paid', VERIFYING: 'Payment being checked', PART: 'Part paid', UNPAID: 'Not paid' };
 
@@ -476,7 +509,7 @@ var PUB = null;
 function showGate(mode, msg) {
   $('app').classList.add('hidden'); $('gate').classList.remove('hidden');
   var draw = function () {
-    var h = '<div class="login-mark"><div class="gate-logo"><img alt="" src="' + APP_LOGO + '"></div><div><b>' + esc(PUB.shop_name) + '</b><span>Order by ' + esc(PUB.cutoff) + ' for delivery ' + (PUB.before === 1 ? 'next morning' : 'in ' + PUB.before + ' days') + '</span></div></div>';
+    var h = '<div class="login-mark"><div class="gate-logo"><img alt="" src="' + APP_LOGO + '"></div><div><b>' + esc(PUB.shop_name) + '</b><span>Order by ' + esc(PUB.cutoff) + (PUB.before === 1 ? ' for next-day delivery' : ', delivered in ' + PUB.before + ' days') + '</span></div></div>';
     if (mode === 'register') {
       h += '<div class="form" id="rg"><label class="field"><span>Your name <em>*</em></span><input name="name" autocomplete="name"></label><label class="field"><span>Mobile number <em>*</em></span><input name="mobile" inputmode="tel" autocomplete="tel"></label>' +
         '<label class="field"><span>Community / apartment <em>*</em></span><select name="community_id" onchange="rgTowers()">' + opts(PUB.communities, '', 'Select', 'community_id', 'name') + '</select></label>' +
@@ -490,6 +523,10 @@ function showGate(mode, msg) {
         '<div class="tiny muted" style="text-align:center">Forgot PIN? ' + (PUB.support_phone ? 'Call <a href="tel:' + attr(PUB.support_phone) + '">' + esc(PUB.support_phone) + '</a>' : 'Contact us') + ' to reset it.</div></form>';
     }
     h += '<div id="gMsg" class="small" style="margin-top:10px;color:var(--red)">' + esc(msg || '') + '</div>';
+    if (mode !== 'register') {
+      h += bannersHtml(PUB.banners);
+      if (PUB.preview && PUB.preview.length) h += '<h4 style="margin:16px 0 6px">What we deliver</h4>' + ['MORNING', 'EVENING'].map(function (sl) { var list = PUB.preview.filter(function (p) { return p.slot === sl; }); return list.length ? slotHead(sl, PUB.slots) + list.map(function (p) { return prodRow(p, null); }).join('') : ''; }).join('');
+    }
     $('gateCard').innerHTML = h;
   };
   if (PUB) draw(); else rpc('shopPublicInfo').then(function (p) { PUB = p; draw(); }, function (e) { $('gateCard').innerHTML = '<div class="note bad">' + esc(e.message) + '</div>'; });
@@ -510,7 +547,7 @@ function logout() { var t = S.token; storeToken(''); $('toast').className = 'toa
 
 /* ------------------------------ shell ------------------------------ */
 var TABS = [['order', 'Order', 'M6 6h15l-1.5 9h-12zM6 6 5 3H2M9 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2M18 20a1 1 0 1 0 0-2 1 1 0 0 0 0 2'], ['calendar', 'Calendar', 'M8 2v4M16 2v4M3 9h18M5 5h14v16H5z'],
-  ['subs', 'Daily plan', 'M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4'], ['orders', 'My orders', 'M4 5h16M4 12h16M4 19h10'], ['pay', 'Pay', 'M2 7h20v10H2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6']];
+  ['subs', 'Plan', 'M4 12a8 8 0 0 1 14-5.3M20 12a8 8 0 0 1-14 5.3M18 3v4h-4M6 21v-4h4'], ['orders', 'My orders', 'M4 5h16M4 12h16M4 19h10'], ['pay', 'Pay', 'M2 7h20v10H2zM12 15a3 3 0 1 0 0-6 3 3 0 0 0 0 6'], ['help', 'Help', 'M21 12a8 8 0 0 1-11.6 7.1L4 20l1-4.6A8 8 0 1 1 21 12z']];
 function start() {
   call('shopBoot').then(function (b) {
     S.boot = b; $('gate').classList.add('hidden'); $('app').classList.remove('hidden');
@@ -541,7 +578,7 @@ VIEWS.order = function (p) {
     S.cart = {};
     day.orders.filter(function (o) { return o.status === 'PLACED'; }).forEach(function (o) { o.items.forEach(function (l) { S.cart[l.sku_id] = l.qty; }); });
     var hasOrder = Object.keys(S.cart).length > 0;
-    var html = '<div class="hero"><b>' + (b.tomorrow_open ? 'Order for tomorrow' : 'Tomorrow\'s orders are closed') + '</b><span>' + (b.tomorrow_open ? 'Fresh to your door on ' + fday(b.tomorrow) + '.' : 'You can order for ' + fday(b.first_date) + ' or any later day.') + '</span><div class="cut">⏰ Order by ' + esc(b.shop.cutoff) + (b.shop.before === 1 ? ' for the next day' : '') + '</div></div>';
+    var html = bannersHtml(b.banners) + '<div class="hero"><b>' + (b.tomorrow_open ? 'Order for tomorrow' : 'Tomorrow\'s orders are closed') + '</b><span>' + (b.tomorrow_open ? 'Delivered to your door on ' + fday(b.tomorrow) + '.' : 'You can order for ' + fday(b.first_date) + ' or any later day.') + '</span><div class="cut">⏰ Order by ' + esc(b.shop.cutoff) + (b.shop.before === 1 ? ' the day before' : '') + '</div></div>';
     html += pendingNote();
     html += '<div class="datechips">' + plan.days.filter(function (d) { return d.open; }).slice(0, 14).map(function (d) {
       var planned = d.orders.length || d.subs.some(function (s) { return !s.skipped; });
@@ -550,14 +587,11 @@ VIEWS.order = function (p) {
     var subsToday = day.subs.filter(function (s) { return !s.skipped; });
     html += '<div class="section"><div class="section-head"><h3>' + fday(S.date) + '</h3><span class="small muted">change until ' + esc(day.deadline || '') + '</span></div>';
     if (subsToday.length) html += '<div class="note small" style="margin-bottom:8px">From your daily plan: <b>' + subsToday.map(function (s) { return s.items.map(function (l) { return l.qty + ' × ' + esc(l.name); }).join(', '); }).join('; ') + '</b> – <a href="#" onclick="event.preventDefault();go(\'calendar\',{day:' + js(S.date) + '})">skip this day</a>. Items below are extra.</div>';
-    var byCo = {};
-    b.catalog.forEach(function (pr) { (byCo[pr.company_name] = byCo[pr.company_name] || []).push(pr); });
-    Object.keys(byCo).forEach(function (co) {
-      if (Object.keys(byCo).length > 1) html += '<div class="nav-group" style="padding-left:0">' + esc(co) + '</div>';
-      html += byCo[co].map(function (pr) {
-        return '<div class="prod"><div class="m"><b>' + esc(pr.name) + '</b><span>' + esc(pr.pack) + (pr.mrp > pr.price ? ' · MRP <s>' + money(pr.mrp) + '</s>' : '') + '</span><span class="price">' + money(pr.price) + '</span></div>' +
-          '<div class="stepper"><button type="button" aria-label="less" onclick="cartAdd(' + js(pr.sku_id) + ',-1)">−</button><input type="number" min="0" max="99" inputmode="numeric" id="q_' + attr(pr.sku_id) + '" value="' + (S.cart[pr.sku_id] || 0) + '" oninput="cartSet(' + js(pr.sku_id) + ',this.value)"><button type="button" aria-label="more" onclick="cartAdd(' + js(pr.sku_id) + ',1)">+</button></div></div>';
-      }).join('');
+    // V7.6: products grouped by delivery slot so customers know when each item arrives
+    ['MORNING', 'EVENING'].forEach(function (sl) {
+      var list = b.catalog.filter(function (pr) { return pr.slot === sl; });
+      if (!list.length) return;
+      html += slotHead(sl, b.slots) + list.map(function (pr) { return prodRow(pr, S.cart[pr.sku_id] || 0); }).join('');
     });
     if (!b.catalog.length) html += '<div class="empty">No products available right now.</div>';
     html += (hasOrder ? '<div style="margin-top:10px"><a href="#" class="small" style="color:var(--red)" onclick="event.preventDefault();cancelDay(this)">Cancel my extra order for this day</a></div>' : '') + '</div><div style="height:70px"></div>';
@@ -574,7 +608,9 @@ function cartPaint() {
   S.boot.catalog.forEach(function (p) { cat[p.sku_id] = p; });
   Object.keys(S.cart).forEach(function (k) { if (cat[k]) { t += S.cart[k] * cat[k].price; n += S.cart[k]; } });
   $('cartT').textContent = money(t);
-  $('cartN').textContent = n ? n + ' item' + (n > 1 ? 's' : '') + ' · ' + fday(S.date) : (S.cache.hasOrder ? 'Remove all to cancel' : 'Add items above');
+  var save = 0, sl = {};
+  Object.keys(S.cart).forEach(function (k) { if (cat[k]) { if (cat[k].mrp > cat[k].price) save += (cat[k].mrp - cat[k].price) * S.cart[k]; sl[cat[k].slot] = 1; } });
+  $('cartN').textContent = n ? n + ' item' + (n > 1 ? 's' : '') + ' · ' + fday(S.date) + (sl.MORNING && sl.EVENING ? ' · morning + evening' : sl.EVENING ? ' · evening' : ' · morning') + (save > 0 ? ' · you save ' + money0(save) : '') : (S.cache.hasOrder ? 'Remove all to cancel' : 'Add items above');
 }
 function saveDay(btn) {
   var items = Object.keys(S.cart).map(function (k) { return { sku_id: k, qty: S.cart[k] }; });
@@ -613,7 +649,7 @@ function dayDetail(k) {
   var d = (S.cache.cal.days.filter(function (x) { return x.date === k; })[0]) || { orders: [], subs: [], open: false };
   var h = '<h3>' + fday(k) + '</h3>' + (d.closed ? '<div class="note warn small">Holiday – no delivery.</div>' : '');
   d.orders.forEach(function (o) {
-    h += '<div class="line"><div class="top"><b>' + esc(o.items_text) + '</b><b class="num">' + money(o.invoice_value || o.order_value) + '</b></div><div style="margin-top:4px">' + chip(o.status, ST[o.status]) + ' ' + (o.pay_status ? chip(o.pay_status, PAYST[o.pay_status]) : '') + (o.invoice_number ? ' <a href="#" onclick="event.preventDefault();showInvoice(' + js(o.order_id) + ')">Invoice ' + esc(o.invoice_number) + '</a>' : '') + '</div>' + (o.reason ? '<div class="tiny muted">' + esc(o.reason) + '</div>' : '') + '</div>';
+    h += '<div class="line"><div class="top"><b>' + (o.slot === 'EVENING' ? '🌙 Evening' : '☀️ Morning') + ' · ' + esc(o.items_text) + '</b><b class="num">' + money(o.invoice_value || o.order_value) + '</b></div><div class="tiny muted">' + esc(o.slot_time || '') + '</div><div style="margin-top:4px">' + chip(o.status, ST[o.status]) + ' ' + (o.pay_status ? chip(o.pay_status, PAYST[o.pay_status]) : '') + (o.invoice_number ? ' <a href="#" onclick="event.preventDefault();showInvoice(' + js(o.order_id) + ')">Invoice ' + esc(o.invoice_number) + '</a>' : '') + '</div>' + (o.reason ? '<div class="tiny muted">' + esc(o.reason) + '</div>' : '') + '</div>';
   });
   d.subs.forEach(function (s) {
     h += '<div class="line"><div class="top"><b>' + (s.skipped ? '<s>' : '') + esc(s.items.map(function (l) { return l.qty + ' × ' + l.name; }).join(', ')) + (s.skipped ? '</s>' : '') + '</b><span class="tiny muted">' + esc(s.pattern_text) + '</span></div>' +
@@ -696,18 +732,62 @@ VIEWS.orders = function () {
   call('shopOrders').then(function (r) {
     var h = head('My orders', 'Last 90 days and upcoming');
     h += r.rows.length ? '<div class="section"><div class="rows">' + r.rows.map(function (o) {
-      return '<button class="row" onclick="' + (o.invoice_number ? 'showInvoice(' + js(o.order_id) + ')' : 'go(\'order\',{date:' + js(o.delivery_date) + '})') + '"><div class="m"><b>' + fday(o.delivery_date) + '</b><span>' + esc(o.items_text) + '</span><span>' + (o.invoice_number ? 'Invoice ' + esc(o.invoice_number) : (o.editable ? 'You can still change this' : '')) + '</span></div><div class="r"><b>' + money(o.invoice_value || o.order_value) + '</b>' + chip(o.status, ST[o.status]) + (o.pay_status ? '<div>' + chip(o.pay_status, PAYST[o.pay_status]) + '</div>' : '') + '</div></button>';
+      return '<button class="row" onclick="' + (o.invoice_number ? 'showInvoice(' + js(o.order_id) + ')' : 'go(\'order\',{date:' + js(o.delivery_date) + '})') + '"><div class="m"><b>' + fday(o.delivery_date) + ' · ' + (o.slot === 'EVENING' ? 'evening' : 'morning') + '</b><span>' + esc(o.items_text) + '</span><span>' + (o.invoice_number ? 'Invoice ' + esc(o.invoice_number) : (o.editable ? 'You can still change this' : '')) + '</span></div><div class="r"><b>' + money(o.invoice_value || o.order_value) + '</b>' + chip(o.status, ST[o.status]) + (o.pay_status ? '<div>' + chip(o.pay_status, PAYST[o.pay_status]) + '</div>' : '') + '</div></button>';
     }).join('') + '</div></div>' : '<div class="empty"><b>No orders yet</b>Your orders and invoices will appear here.</div>';
+    h += '<div class="small muted" style="margin:6px 2px">Problem with a delivery? <a href="#" onclick="event.preventDefault();go(\'help\',{kind:\'COMPLAINT\'})">Raise a complaint</a></div>';
     if (r.notes.length) h += '<div class="section"><h3>Credit notes</h3><div class="rows">' + r.notes.map(function (n) { return '<button class="row" onclick="showNote(' + js(n.note_id) + ')"><div class="m"><b>' + esc(n.note_number) + '</b><span>' + fdate(n.date) + ' · ' + esc(n.reason) + '</span></div><div class="r"><b>− ' + money(n.value) + '</b></div></button>'; }).join('') + '</div></div>';
     $('main').innerHTML = h;
   }, function (e) { $('main').innerHTML = '<div class="note bad">' + esc(e.message) + '</div>'; });
 };
-function showDoc(d) {
-  $('printArea').innerHTML = docHtml(d);
-  openModal('<h3>' + esc(d.title) + ' ' + esc(d.number) + '</h3><div style="border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:60vh;background:#fff"><div style="width:194mm">' + docHtml(d) + '</div></div><div class="actions end" style="margin-top:10px"><button class="btn ghost" onclick="closeModal()">Close</button><button class="btn" onclick="window.print()">Print / Save PDF</button></div>');
+function showDoc(d, mode) {
+  mode = mode || d.default_mode;
+  $('printArea').innerHTML = docHtml(d, mode);
+  var other = d.html && d.html.RETAIL ? (mode === 'GST' ? 'RETAIL' : 'GST') : '';
+  S.lastDoc = d;
+  openModal('<h3>' + esc(d.title) + ' ' + esc(d.number) + '</h3><div style="border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:60vh;background:#fff;padding:3mm"><div style="width:194mm">' + docHtml(d, mode) + '</div></div><div class="actions end" style="margin-top:10px"><button class="btn ghost" onclick="closeModal()">Close</button>' +
+    (other ? '<button class="btn ghost" onclick="showDoc(S.lastDoc,' + js(other) + ')">' + (other === 'GST' ? 'Full GST invoice' : 'Simple invoice') + '</button>' : '') + '<button class="btn" onclick="window.print()">Print / Save PDF</button></div>');
 }
 function showInvoice(id) { call('shopInvoice', id).then(showDoc, showErr); }
 function showNote(id) { call('shopNote', id).then(showDoc, showErr); }
+
+/* ------------------------------ V7.7 HELP: WhatsApp, feedback & complaints ------------------------------ */
+function waUrl(phone, text) { var p = String(phone || '').replace(/\D/g, ''); if (p.length === 10) p = '91' + p; return 'https://wa.me/' + p + (text ? '?text=' + encodeURIComponent(text) : ''); }
+function waShare(text) { return 'https://wa.me/?text=' + encodeURIComponent(text); }
+VIEWS.help = function (p) {
+  p = p || {};
+  var b = S.boot, c = b.customer, w = b.shop.whatsapp;
+  var me = c.name + ', ' + [c.flat ? 'Flat ' + c.flat : '', c.tower, c.community].filter(Boolean).join(', ');
+  var h = head('Help & feedback', 'We usually reply within a few hours');
+  h += '<div class="section"><div class="actions" style="flex-wrap:wrap">' +
+    (w ? '<a class="btn wa" target="_blank" rel="noopener" href="' + attr(waUrl(w, 'Hi, this is ' + me + '. ')) + '">💬 Chat on WhatsApp</a>' : '') +
+    (b.shop.support_phone ? '<a class="btn ghost" href="tel:' + attr(b.shop.support_phone) + '">📞 Call us</a>' : '') +
+    (b.shop.shop_url ? '<a class="btn ghost" target="_blank" rel="noopener" href="' + attr(waShare('I order milk, curd, paneer, ghee & honey for home delivery from ' + b.shop.name + '. Order by ' + b.shop.cutoff + ' for next-morning delivery: ' + b.shop.shop_url)) + '">📣 Invite neighbours</a>' : '') + '</div></div>';
+  h += '<div class="section"><h3>Tell us</h3><div class="form" id="fbF"><div class="seg" id="fbKind">' + [['COMPLAINT', '⚠ Complaint'], ['FEEDBACK', '⭐ Feedback'], ['SUGGESTION', '💡 Suggestion']].map(function (k) { return '<button type="button" data-k="' + k[0] + '" class="' + ((p.kind || 'COMPLAINT') === k[0] ? 'on' : '') + '" onclick="fbKind(\'' + k[0] + '\')">' + k[1] + '</button>'; }).join('') + '</div>' +
+    '<label class="field" id="fbCatF"><span>What is it about?</span><select id="fbCat">' + opts(b.shop.feedback_categories || [], p.category || '', 'Select') + '</select></label>' +
+    '<div class="field" id="fbRateF" style="display:none"><span>Rating</span><div class="stars" id="fbStars">' + [1, 2, 3, 4, 5].map(function (n) { return '<button type="button" data-n="' + n + '" onclick="fbRate(' + n + ')">★</button>'; }).join('') + '</div></div>' +
+    '<label class="field"><span>Message <em>*</em></span><textarea id="fbMsg" rows="3" maxlength="1000" placeholder="Tell us what happened">' + esc(p.message || '') + '</textarea></label>' +
+    '<div class="field"><span>Photo (optional)</span><div class="photo-in"><input type="file" id="fbPh" accept="image/*"></div></div>' +
+    '<div class="actions"><button class="btn" id="fbOk">Send</button></div></div></div><div class="section"><h3>My messages</h3><div id="fbList"><div class="empty">Loading…</div></div></div>';
+  $('main').innerHTML = h;
+  S.fb = { kind: p.kind || 'COMPLAINT', rating: 0, order_id: p.order_id || '' };
+  fbKind(S.fb.kind);
+  $('fbOk').onclick = function () {
+    var btn = this;
+    act(btn, 'Sending…', function () { return readFile('fbPh').then(function (f) { return call('shopFeedback', { kind: S.fb.kind, category: val('fbCat'), rating: S.fb.rating, message: val('fbMsg'), order_id: S.fb.order_id, photo_base64: f ? f.data : '', photo_file_name: f ? f.name : '', photo_mime_type: f ? f.mime : '' }); }); })
+      .then(function () { go('help'); }, swallow);
+  };
+  call('shopMyFeedback').then(function (rows) {
+    $('fbList').innerHTML = rows.length ? '<div class="rows">' + rows.map(function (f) { return '<div class="row static"><div class="m"><b>' + esc(f.feedback_id) + ' · ' + esc(cap(f.kind)) + (f.rating ? ' · ' + '★'.repeat(f.rating) : '') + '</b><span>' + esc(f.created_at) + ' · ' + esc(cap(f.category)) + '</span><span style="white-space:normal">' + esc(f.message) + '</span>' + (f.resolution ? '<span style="white-space:normal"><b>Our reply:</b> ' + esc(f.resolution) + '</span>' : '') + '</div><div class="r">' + chip(f.status, f.status === 'IN_PROGRESS' ? 'Working on it' : cap(f.status)) + '</div></div>'; }).join('') + '</div>' : '<div class="muted small">Nothing sent yet.</div>';
+  }, function (e) { $('fbList').innerHTML = '<div class="note bad">' + esc(e.message) + '</div>'; });
+};
+function fbKind(k) {
+  S.fb.kind = k;
+  document.querySelectorAll('#fbKind button').forEach(function (b) { b.classList.toggle('on', b.getAttribute('data-k') === k); });
+  $('fbRateF').style.display = k === 'FEEDBACK' ? '' : 'none';
+  $('fbCatF').style.display = k === 'SUGGESTION' ? 'none' : '';
+}
+function fbRate(n) { S.fb.rating = n; document.querySelectorAll('#fbStars button').forEach(function (b) { b.classList.toggle('on', Number(b.getAttribute('data-n')) <= n); }); }
+function reportProblem(orderId, label) { go('help', { kind: 'COMPLAINT', order_id: orderId, message: label ? 'About my delivery of ' + label + ': ' : '' }); }
 
 /* ------------------------------ PAY ------------------------------ */
 VIEWS.pay = function () {
@@ -754,6 +834,24 @@ VIEWS.profile = function () {
 }
 function saveProfile(btn) { act(btn, 'Saving…', function () { return call('shopSaveProfile', formOf('pr')); }).then(function () { start(); }, swallow); }
 
+/* ------------------------------ V7.6 banners, slots, product rows ------------------------------ */
+var SLOT_ICON = { MORNING: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><circle cx="12" cy="13" r="4"/><path d="M12 3v2M4.2 7.2l1.4 1.4M18.4 8.6l1.4-1.4M3 13h2M19 13h2M5 19h14"/></svg>',
+  EVENING: '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M20 14.5A8 8 0 0 1 9.5 4a8 8 0 1 0 10.5 10.5z"/></svg>' };
+function slotHead(sl, times) {
+  times = times || {};
+  return '<div class="slot-head ' + sl.toLowerCase() + '">' + SLOT_ICON[sl] + '<div><b>' + (sl === 'MORNING' ? 'Morning delivery' : 'Evening delivery') + '</b><span>' + esc(times[sl] || '') + '</span></div></div>';
+}
+function prodRow(pr, qty) {
+  var off = pr.mrp > pr.price ? Math.round((pr.mrp - pr.price) / pr.mrp * 100) : (pr.off_pct || 0);
+  return '<div class="prod">' + (pr.image ? '<img class="pimg" alt="" loading="lazy" src="' + attr(pr.image) + '">' : '') + '<div class="m"><b>' + esc(pr.name) + (pr.tag ? ' <span class="tag">' + esc(pr.tag) + '</span>' : '') + '</b><span>' + esc(pr.pack) + '</span>' +
+    '<span class="price">' + money(pr.price) + (pr.mrp > pr.price ? ' <s>' + money(pr.mrp) + '</s>' : '') + (off > 0 ? ' <i class="off">' + off + '% off</i>' : '') + '</span>' + (pr.offer_till ? '<span class="tiny" style="color:#8A5A00">Offer till ' + fdate(pr.offer_till) + '</span>' : '') + '</div>' +
+    (qty === null ? '' : '<div class="stepper"><button type="button" aria-label="less" onclick="cartAdd(' + js(pr.sku_id) + ',-1)">−</button><input type="number" min="0" max="99" inputmode="numeric" id="q_' + attr(pr.sku_id) + '" value="' + qty + '" oninput="cartSet(' + js(pr.sku_id) + ',this.value)"><button type="button" aria-label="more" onclick="cartAdd(' + js(pr.sku_id) + ',1)">+</button></div>') + '</div>';
+}
+function bannersHtml(list) {
+  if (!list || !list.length) return '';
+  return '<div class="banners" aria-label="Offers">' + list.map(function (b) { return '<div class="banner ' + esc(String(b.theme || 'BLUE').toLowerCase()) + '">' + (b.image ? '<img alt="" src="' + attr(b.image) + '">' : '') + '<div><b>' + esc(b.title) + '</b>' + (b.text ? '<span>' + esc(b.text) + '</span>' : '') + (b.till ? '<small>Till ' + fdate(b.till) + '</small>' : '') + '</div></div>'; }).join('') + '</div>';
+}
+
 /* ------------------------------ start ------------------------------ */
 (function init() {
   try { S.token = localStorage.getItem('arhaan_shop_token') || ''; } catch (e) {}
@@ -764,7 +862,8 @@ function saveProfile(btn) { act(btn, 'Saving…', function () { return call('sho
 <script>
 /* Shared by the staff app and the customer page: GST invoice / credit note layout (A4 half page or full page). */
 function m2(v) { return Number(v || 0).toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
-function docHtml(d) {
+function docHtml(d, mode) {
+  if (d.html) return d.html[mode && d.html[mode] ? mode : (d.default_mode || 'GST')] || d.html.GST;
   var s = d.seller, inter = d.inter_state;
   var rows = d.lines.map(function (l) { return '<tr><td>' + l.sr + '</td><td>' + esc(l.product_name) + '</td><td>' + esc(l.hsn) + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + m2(l.rate_incl) + '</td><td class="n">' + l.gst_rate + '%</td><td class="n">' + m2(l.taxable) + '</td><td class="n">' + m2(l.cgst + l.sgst + l.igst) + '</td><td class="n">' + m2(l.gross) + '</td></tr>'; }).join('');
   var tax = d.tax_summary.map(function (r) { return '<tr><td>' + r.rate + '%</td><td class="n">' + m2(r.taxable) + '</td>' + (inter ? '<td class="n">' + m2(r.igst) + '</td>' : '<td class="n">' + m2(r.cgst) + '</td><td class="n">' + m2(r.sgst) + '</td>') + '</tr>'; }).join('');
