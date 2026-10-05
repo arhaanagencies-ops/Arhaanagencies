@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Arhaan Agencies – CSD & government tender consultancy</title>
+<meta name="description" content="Arhaan Agencies helps manufacturers and suppliers get listed with the Canteen Stores Department (CSD), supply unit canteens, register on GeM and bid for government tenders.">
+<meta name="theme-color" content="#0D1B4C">
+<link rel="icon" href="icon.png">
+<link rel="apple-touch-icon" href="icon.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@100..125,400..800&display=swap" rel="stylesheet">
+<script src="config.js"></script>
+<script>
+/* ---- Your contact details: edit here ---- */
+var SITE = {
+  phone: '',                               // e.g. '9876543210' – shows Call and WhatsApp buttons when filled
+  email: 'arhaanagencies21@gmail.com',
+  city: '',                                // e.g. 'Pune, Maharashtra'
+  hours: 'Monday – Saturday, 10 am – 7 pm'
+};
+</script>
+<style>
+:root{
+  --navy:#0D1B4C; --royal:#1747C9; --gold:#EDA914; --gold-2:#F7D27A; --paper:#F5F7FC; --ink:#121A35; --slate:#5B6688; --line:#DCE1EE; --white:#fff;
+  --wide:'Archivo',system-ui,sans-serif;
+}
+*{box-sizing:border-box}
+html{scroll-behavior:smooth}
+@media (prefers-reduced-motion:reduce){html{scroll-behavior:auto}*{animation:none!important;transition:none!important}}
+body{margin:0;font-family:var(--wide);font-stretch:100%;font-size:17px;line-height:1.6;color:var(--ink);background:var(--paper);-webkit-font-smoothing:antialiased}
+a{color:var(--royal)}
+:focus-visible{outline:3px solid var(--gold);outline-offset:3px;border-radius:4px}
+.wrap{width:min(1120px,100% - 40px);margin:0 auto}
+h1,h2,h3{font-stretch:125%;line-height:1.08;margin:0;letter-spacing:-.01em}
+h2{font-size:clamp(28px,4vw,40px);font-weight:750}
+h3{font-size:20px;font-weight:700;font-stretch:112%}
+p{margin:0}
+
+/* top bar */
+.top{position:absolute;inset:0 0 auto 0;z-index:5}
+.top .wrap{display:flex;align-items:center;gap:14px;height:76px}
+.brand{display:flex;align-items:center;gap:10px;color:#fff;text-decoration:none;margin-right:auto}
+.brand img{width:44px;height:44px;object-fit:contain;background:#fff;border-radius:10px;padding:4px}
+.brand b{font-stretch:125%;font-size:19px;font-weight:750;letter-spacing:.01em}
+.top nav{display:flex;gap:6px}
+.top nav a{color:#D8DFF5;text-decoration:none;font-size:15px;padding:8px 12px;border-radius:8px}
+.top nav a:hover{color:#fff;background:rgba(255,255,255,.08)}
+.top nav a.login{border:1px solid rgba(255,255,255,.28);color:#fff}
+@media (max-width:760px){.top nav a.hide-s{display:none}}
+
+/* hero */
+.hero{position:relative;background:var(--navy);color:#fff;overflow:hidden;padding:150px 0 150px}
+.hero .arc{position:absolute;left:-6%;bottom:0;width:116%;height:46%;pointer-events:none}
+.hero .arc path{stroke-dasharray:1900;stroke-dashoffset:1900;animation:draw 1.6s .25s cubic-bezier(.3,.6,.2,1) forwards}
+@keyframes draw{to{stroke-dashoffset:0}}
+.hero .grid{position:relative;display:grid;grid-template-columns:1.25fr .9fr;gap:56px;align-items:center}
+.hero h1{font-size:clamp(38px,6.2vw,72px);font-weight:800;max-width:13ch}
+.hero .lede{margin-top:22px;font-size:19px;color:#C9D2EE;max-width:52ch}
+.ctas{display:flex;flex-wrap:wrap;gap:12px;margin-top:34px}
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:8px;min-height:50px;padding:0 22px;border-radius:10px;font:inherit;font-weight:650;font-size:16px;text-decoration:none;cursor:pointer;border:1.5px solid transparent}
+.btn.gold{background:var(--gold);color:var(--navy)}
+.btn.gold:hover{background:var(--gold-2)}
+.btn.line{border-color:rgba(255,255,255,.4);color:#fff}
+.btn.line:hover{background:rgba(255,255,255,.08)}
+.btn.blue{background:var(--royal);color:#fff}
+.btn.blue:hover{background:#0F38A8}
+
+/* the file docket */
+.docket{position:relative;background:#fff;color:var(--ink);border-radius:4px 14px 14px 14px;padding:26px 26px 22px;box-shadow:0 30px 60px -20px rgba(0,0,0,.45)}
+.docket::before{content:'Your file with us';position:absolute;top:-34px;left:0;background:#fff;color:var(--navy);font-weight:700;font-size:14px;padding:8px 16px 6px;border-radius:10px 10px 0 0}
+.docket ul{list-style:none;margin:0;padding:0}
+.docket li{display:flex;gap:12px;padding:11px 0;border-bottom:1px dashed var(--line);font-size:16px}
+.docket li:last-child{border-bottom:0}
+.docket li svg{flex:none;margin-top:3px}
+.docket .stamp{display:inline-block;margin-top:14px;border:2px solid var(--royal);color:var(--royal);font-weight:750;font-stretch:125%;padding:4px 12px;border-radius:6px;transform:rotate(-3deg);font-size:14px}
+@media (max-width:900px){.hero{padding:120px 0 80px}.hero .grid{grid-template-columns:1fr;gap:60px}}
+
+/* sections */
+section{padding:92px 0}
+.intro{max-width:62ch;margin:14px 0 48px;color:var(--slate);font-size:18px}
+.services{display:grid;grid-template-columns:repeat(2,1fr);gap:0 56px}
+.svc{padding:26px 0 26px 22px;border-left:3px solid var(--gold);margin-bottom:18px;background:linear-gradient(90deg,rgba(237,169,20,.07),transparent 40%)}
+.svc p{margin-top:8px;color:var(--slate)}
+@media (max-width:760px){.services{grid-template-columns:1fr}}
+
+.steps{position:relative;display:grid;grid-template-columns:repeat(4,1fr);gap:28px;margin-top:20px}
+.steps .path{position:absolute;left:0;right:0;top:20px;height:3px;background:linear-gradient(90deg,var(--gold),var(--gold-2));border-radius:3px}
+.step{position:relative}
+.step .n{width:44px;height:44px;border-radius:50%;background:var(--navy);color:#fff;display:grid;place-items:center;font-weight:750;font-stretch:125%;font-size:18px;border:3px solid var(--paper);margin-bottom:18px}
+.step p{color:var(--slate);margin-top:8px;font-size:16px}
+@media (max-width:860px){.steps{grid-template-columns:1fr;gap:26px}.steps .path{left:20px;right:auto;top:0;bottom:0;width:3px;height:auto}.step{padding-left:64px}.step .n{position:absolute;left:0;top:0}}
+
+.why{background:#fff;border-top:1px solid var(--line);border-bottom:1px solid var(--line)}
+.why .grid{display:grid;grid-template-columns:.9fr 1.1fr;gap:56px;align-items:start}
+.why dl{margin:0}
+.why dt{font-weight:700;font-stretch:112%;font-size:19px;margin-top:26px}
+.why dt:first-child{margin-top:0}
+.why dd{margin:6px 0 0;color:var(--slate)}
+@media (max-width:860px){.why .grid{grid-template-columns:1fr;gap:28px}}
+
+.contact .grid{display:grid;grid-template-columns:1.2fr .8fr;gap:48px;align-items:start}
+form{background:#fff;border:1px solid var(--line);border-radius:14px;padding:28px}
+.f2{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+label{display:block;margin-bottom:16px}
+label span{display:block;font-size:14px;font-weight:600;color:var(--slate);margin-bottom:6px}
+input,select,textarea{width:100%;font:inherit;font-size:16px;color:var(--ink);background:var(--paper);border:1.5px solid var(--line);border-radius:10px;padding:12px 14px;min-height:50px}
+input:focus,select:focus,textarea:focus{border-color:var(--royal);outline:none;background:#fff}
+textarea{min-height:110px;resize:vertical}
+.hp{position:absolute;left:-5000px}
+.msg{margin-top:14px;font-size:15px;min-height:1.4em}
+.msg.ok{color:#127044}.msg.bad{color:#B3261E}
+.direct{display:flex;flex-direction:column;gap:12px}
+.direct a.btn{justify-content:flex-start}
+.direct p{color:var(--slate);font-size:15px}
+@media (max-width:860px){.contact .grid{grid-template-columns:1fr}.f2{grid-template-columns:1fr;gap:0}}
+
+footer{background:var(--navy);color:#B9C3E2;padding:56px 0 40px;font-size:15px}
+footer .grid{display:grid;grid-template-columns:1.3fr 1fr 1fr;gap:36px}
+footer a{color:#fff;text-decoration:none}
+footer a:hover{text-decoration:underline}
+footer h3{color:#fff;font-size:17px;margin-bottom:12px}
+footer .dairy{display:block;background:rgba(255,255,255,.06);border:1px solid rgba(255,255,255,.14);border-radius:12px;padding:14px 16px;margin-top:6px}
+footer .dairy b{color:var(--gold-2);display:block;font-size:16px}
+footer .fine{margin-top:40px;padding-top:20px;border-top:1px solid rgba(255,255,255,.12);font-size:13px;color:#8E9AC2;max-width:90ch}
+@media (max-width:860px){footer .grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+
+<header class="top">
+  <div class="wrap">
+    <a class="brand" href="#"><img src="logo.png" alt=""><b>Arhaan Agencies</b></a>
+    <nav aria-label="Main">
+      <a class="hide-s" href="#services">Services</a>
+      <a class="hide-s" href="#process">How we work</a>
+      <a class="hide-s" href="#contact">Contact</a>
+      <a class="login" href="portal.html">Team login</a>
+    </nav>
+  </div>
+</header>
+
+<main>
+<section class="hero">
+  <svg class="arc" viewBox="0 0 1400 520" aria-hidden="true" preserveAspectRatio="none"><path d="M-20 515 C 420 500, 900 430, 1420 300" fill="none" stroke="#EDA914" stroke-width="10" stroke-linecap="round" opacity=".9"/></svg>
+  <div class="wrap grid">
+    <div>
+      <h1>Get your products into CSD canteens and government supply.</h1>
+      <p class="lede">We help manufacturers and suppliers get listed with the Canteen Stores Department, supply unit-run canteens, register on GeM and bid for government tenders – with the paperwork handled and delivery arranged.</p>
+      <div class="ctas">
+        <a class="btn gold" href="#contact">Discuss your product</a>
+        <a class="btn line" id="heroWa" href="#contact">Send us a message</a>
+      </div>
+    </div>
+    <div class="docket">
+      <ul>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1747C9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Which channel fits your product – CSD, unit canteens, GeM or open tenders</li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1747C9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Registration, documents, price sheets and samples</li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1747C9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Bid preparation, EMD and follow-up with the buyer</li>
+        <li><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="#1747C9" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Supply, invoicing and payment follow-up after the order</li>
+      </ul>
+      <span class="stamp">One point of contact</span>
+    </div>
+  </div>
+</section>
+
+<section id="services">
+  <div class="wrap">
+    <h2>What we do</h2>
+    <p class="intro">Selling to defence canteens and government buyers has its own rules, portals and paperwork. We take you through each one.</p>
+    <div class="services">
+      <div class="svc"><h3>CSD product listing</h3><p>Preparing your application to introduce products with the Canteen Stores Department: product details, pricing, quality documents and samples, and following it through.</p></div>
+      <div class="svc"><h3>Unit-run canteen supply</h3><p>Supplying listed products to unit-run canteens (URCs) and defence establishments, with stock, delivery and billing managed by our distribution team.</p></div>
+      <div class="svc"><h3>GeM registration &amp; catalogue</h3><p>Seller registration on the Government e-Marketplace, vendor assessment, product catalogue upload and responding to bids and direct orders.</p></div>
+      <div class="svc"><h3>Government tender bidding</h3><p>Finding suitable tenders on central, state and PSU portals, reading the terms, preparing technical and price bids and submitting on time.</p></div>
+      <div class="svc"><h3>Documents &amp; compliance</h3><p>GST, Udyam (MSME), PAN and bank documents, EMD and performance guarantee, declarations and certificates that tenders ask for.</p></div>
+      <div class="svc"><h3>Distribution partnership</h3><p>For brands entering our region: warehousing, retail and institutional distribution, home delivery and collections through our own team.</p></div>
+    </div>
+  </div>
+</section>
+
+<section id="process" style="padding-top:20px">
+  <div class="wrap">
+    <h2>How we work</h2>
+    <p class="intro">Four steps, from the first call to the first order shipped.</p>
+    <div class="steps">
+      <div class="path" aria-hidden="true"></div>
+      <div class="step"><div class="n">1</div><h3>Understand</h3><p>We look at your product, prices and documents and suggest the right channel.</p></div>
+      <div class="step"><div class="n">2</div><h3>Prepare</h3><p>Registrations, applications and bid documents are prepared and checked with you.</p></div>
+      <div class="step"><div class="n">3</div><h3>Submit &amp; follow up</h3><p>We file on the portal and follow up for queries, samples and approvals.</p></div>
+      <div class="step"><div class="n">4</div><h3>Supply</h3><p>Once you have the order, we can handle delivery, invoices and payment follow-up.</p></div>
+    </div>
+  </div>
+</section>
+
+<section class="why">
+  <div class="wrap grid">
+    <h2>A consultancy that also delivers.</h2>
+    <dl>
+      <dt>We run distribution every day</dt>
+      <dd>Arhaan Agencies distributes FMCG and dairy brands to retail outlets and homes, with our own delivery, billing and collection system. Getting the order is only half the job – we handle the other half too.</dd>
+      <dt>GST-ready billing</dt>
+      <dd>Every supply goes out with a proper GST invoice, delivery proof and a clear ledger, which is what government buyers expect.</dd>
+      <dt>One accountable contact</dt>
+      <dd>You deal with one person who knows your file, not a call centre.</dd>
+    </dl>
+  </div>
+</section>
+
+<section class="contact" id="contact">
+  <div class="wrap">
+    <h2>Tell us about your product</h2>
+    <p class="intro">Leave your details and we will call you within one working day.</p>
+    <div class="grid">
+      <form id="enq" novalidate>
+        <div class="f2"><label><span>Your name *</span><input name="name" autocomplete="name" required></label><label><span>Company</span><input name="organisation" autocomplete="organization"></label></div>
+        <div class="f2"><label><span>Mobile *</span><input name="phone" inputmode="tel" autocomplete="tel" required></label><label><span>Email</span><input name="email" type="email" autocomplete="email"></label></div>
+        <label><span>What do you need help with?</span><select name="service">
+          <option>CSD product listing</option><option>URC / unit canteen supply</option><option>GeM registration &amp; catalogue</option><option>Government tender bidding</option><option>Tender documents &amp; compliance</option><option>Distribution / supply partnership</option><option>Other</option></select></label>
+        <label><span>About your product or tender</span><textarea name="message" placeholder="Product, category, current markets, tender number…"></textarea></label>
+        <label class="hp" aria-hidden="true"><span>Website</span><input name="website" tabindex="-1" autocomplete="off"></label>
+        <button class="btn blue" type="submit" id="enqBtn">Send enquiry</button>
+        <div class="msg" id="enqMsg" role="status" aria-live="polite"></div>
+      </form>
+      <div class="direct" id="direct"></div>
+    </div>
+  </div>
+</section>
+</main>
+
+<footer>
+  <div class="wrap">
+    <div class="grid">
+      <div><h3>Arhaan Agencies</h3><p>CSD and government supply consultancy, and distribution of FMCG and dairy brands.</p><p id="fCity" style="margin-top:8px"></p></div>
+      <div><h3>Home delivery</h3><a class="dairy" href="dairy.html"><b>Fresh dairy at your door</b>Order milk and dairy for tomorrow morning, set a daily plan and pay by UPI.</a></div>
+      <div><h3>Links</h3><p><a href="#services">Services</a></p><p><a href="#contact">Contact</a></p><p><a href="portal.html">Team login</a></p></div>
+    </div>
+    <p class="fine">Arhaan Agencies is an independent consultancy and distributor. We are not part of, or authorised to represent, the Canteen Stores Department, the Ministry of Defence or any government department. Listing and tender decisions are made only by the buyer.</p>
+    <p class="fine" style="margin-top:8px;border:0;padding:0">© <span id="yr"></span> Arhaan Agencies</p>
+  </div>
+</footer>
+
+<script>
+(function () {
+  document.getElementById('yr').textContent = new Date().getFullYear();
+  var s = SITE, d = document.getElementById('direct'), h = '';
+  var ph = String(s.phone || '').replace(/\D/g, '').slice(-10);
+  if (ph) {
+    h += '<a class="btn blue" href="https://wa.me/91' + ph + '?text=' + encodeURIComponent('Hello Arhaan Agencies, I would like to discuss CSD / tender supply.') + '" target="_blank" rel="noopener">WhatsApp us</a>';
+    h += '<a class="btn" style="border-color:var(--line);color:var(--ink);background:#fff" href="tel:+91' + ph + '">Call +91 ' + ph.slice(0, 5) + ' ' + ph.slice(5) + '</a>';
+    document.getElementById('heroWa').href = 'https://wa.me/91' + ph; document.getElementById('heroWa').textContent = 'WhatsApp us';
+  }
+  if (s.email) h += '<a class="btn" style="border-color:var(--line);color:var(--ink);background:#fff" href="mailto:' + s.email + '">' + s.email + '</a>';
+  if (s.hours) h += '<p>' + s.hours + '</p>';
+  d.innerHTML = h;
+  if (s.city) document.getElementById('fCity').textContent = s.city;
+
+  var f = document.getElementById('enq'), m = document.getElementById('enqMsg'), b = document.getElementById('enqBtn');
+  f.addEventListener('submit', function (e) {
+    e.preventDefault();
+    var v = {}; [].forEach.call(f.elements, function (el) { if (el.name) v[el.name] = el.value.trim(); });
+    v.source = 'WEBSITE';
+    if (v.name.length < 2) { m.className = 'msg bad'; m.textContent = 'Please enter your name.'; return; }
+    if (!/^[6-9]\d{9}$/.test(v.phone.replace(/\D/g, '').slice(-10))) { m.className = 'msg bad'; m.textContent = 'Please enter a valid 10-digit mobile number.'; return; }
+    var mail = function () { location.href = 'mailto:' + s.email + '?subject=' + encodeURIComponent('Enquiry – ' + v.service) + '&body=' + encodeURIComponent(v.name + '\n' + v.organisation + '\n' + v.phone + '\n\n' + v.message); };
+    if (!/^https?:\/\//.test(window.ARHAAN_API_URL || '')) { mail(); return; }
+    b.disabled = true; b.textContent = 'Sending…'; m.className = 'msg'; m.textContent = '';
+    fetch(window.ARHAAN_API_URL, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: 'submitEnquiry', args: [v] }), credentials: 'omit', redirect: 'follow' })
+      .then(function (r) { return r.json(); })
+      .then(function (r) { b.disabled = false; b.textContent = 'Send enquiry'; if (r.error) { m.className = 'msg bad'; m.textContent = r.error; } else { m.className = 'msg ok'; m.textContent = r.result.message; f.reset(); } })
+      .catch(function () { b.disabled = false; b.textContent = 'Send enquiry'; m.className = 'msg bad'; m.innerHTML = 'Could not send just now. Please email <a href="mailto:' + s.email + '">' + s.email + '</a>.'; });
+  });
+})();
+</script>
+</body>
+</html>
