@@ -514,20 +514,23 @@ function fileField(id, label, required, accept) {
 
 /* ------------------------------ AUTH ------------------------------ */
 function storeToken(t) { S.token = t || ''; try { if (t) localStorage.setItem('arhaan_v7_token', t); else localStorage.removeItem('arhaan_v7_token'); } catch (e) {} }
+function loginIdle() { var b = $('loginBtn'); if (b) { b.disabled = false; b.textContent = 'Sign in'; } }
 function doLogin() {
   var u = val('lu').trim(), p = val('lp'), m = $('loginMsg'), b = $('loginBtn');
+  if (b.disabled) return;
   if (!u || !p) { m.textContent = 'Enter your user ID and password.'; return; }
-  b.disabled = true; b.textContent = 'Signing in…'; m.textContent = '';
+  b.disabled = true; b.textContent = 'Signing in…'; m.textContent = ''; m.style.color = '';
   google.script.run.withSuccessHandler(function (r) {
-    b.disabled = false; b.textContent = 'Sign in';
-    storeToken(r.token); $('lp').value = '';
-    startApp(r.must_change_password);
+    // keep the button busy until the first screen is ready, so it never looks like the page reset
+    b.textContent = 'Loading your data…'; m.textContent = 'Signed in. Loading your data – the first load can take a few seconds.'; m.style.color = '';
+    storeToken(r.token);
+    startApp(r.must_change_password, function () { $('lp').value = ''; loginIdle(); });
   }).withFailureHandler(function (e) {
-    b.disabled = false; b.textContent = 'Sign in';
+    loginIdle();
     m.textContent = String((e && e.message) || e).replace(/^Error:\s*/, ''); m.style.color = 'var(--red)';
   }).loginAppUser(u, p);
 }
-function startApp(mustChange) {
+function startApp(mustChange, done, retried) {
   call('getBootstrap').then(function (b) {
     S.boot = b;
     $('login').classList.add('hidden'); $('app').classList.remove('hidden');
@@ -535,7 +538,13 @@ function startApp(mustChange) {
     if (mustChange || b.user.must_change_password) go('profile', { force: true }, { reset: true });
     else go(b.user.role_group === 'PARTNER' ? 'd2cDeliver' : 'home', {}, { reset: true });
     startTimers();
-  }, function (e) { showLoginScreen(e.message); });
+    if (done) done();
+  }, function (e) {
+    // a slow first call (server waking up) is retried once before asking for the password again
+    if (!retried && S.token && !/expired|login again|Invalid|inactive|assigned/i.test(String(e && e.message))) { setTimeout(function () { startApp(mustChange, done, true); }, 1200); return; }
+    if (done) done();
+    showLoginScreen(e.message);
+  });
 }
 function sessionLost(msg) { storeToken(''); showLoginScreen(msg || 'Session expired. Please sign in again.'); }
 function showLoginScreen(msg) {
@@ -628,7 +637,7 @@ function bottomIds() {
 }
 function paintShell() {
   var b = S.boot, c = b.company || {};
-  $('hCompany').textContent = c.company_name || 'No company';
+  $('hCompany').textContent = 'Arhaan Agencies';   // fixed brand; the company is shown in the dropdown below
   $('hUser').textContent = b.user.name + ' · ' + cap(b.user.role);
   $('hLogo').innerHTML = '<img alt="Arhaan Agencies" src="' + APP_LOGO + '">';
   var sel = $('companySel');
@@ -2040,8 +2049,10 @@ ADMIN_VIEWS.audit = function (p) {
 
 /* ---------- system ---------- */
 ADMIN_VIEWS.system = function () {
-  call('getSystemHealth').then(function (h) {
+  Promise.all([call('getSystemHealth'), call('getKeepWarm').catch(function () { return { on: false }; })]).then(function (rr) {
+    var h = rr[0], kw = rr[1];
     adminPage('system', 'Database health · ' + esc(h.version), '<button class="btn sm ghost" onclick="repairDb(this)">Repair database</button>',
+      '<div class="section"><h3>Keep the app fast</h3><div class="note ' + (kw.on ? 'good' : 'warn') + '">' + (kw.on ? 'ON – the app is pinged every 5 minutes, so it is already awake when you open it.' : 'OFF – after a quiet spell the first screen can take several seconds to open. Switch on to ping the app every 5 minutes (free).') + '</div><div class="actions" style="margin-top:8px"><button class="btn sm' + (kw.on ? ' ghost' : '') + '" onclick="act(this,\'Saving…\',function(){return call(\'setKeepWarm\',' + (!kw.on) + ')}).then(function(){ADMIN_VIEWS.system()},swallow)">' + (kw.on ? 'Switch off' : 'Switch on') + '</button></div></div>' +
       '<div class="note ' + (h.ok ? 'good' : 'warn') + '" style="margin-bottom:12px">' + (h.ok ? 'All tables and columns are present.' : 'Some tables or columns are missing. "Repair database" adds them without touching existing data.') + '</div>' +
       '<div class="section"><div class="tbl-wrap"><table class="tbl"><tr><th>Table</th><th>Sheet</th><th class="n">Rows</th><th>Missing columns</th></tr>' + h.tables.map(function (t) { return '<tr><td>' + esc(t.table) + '</td><td>' + (t.exists ? esc(t.sheet) : chip('FAILED', 'Missing')) + '</td><td class="n">' + num(t.rows) + '</td><td>' + esc(t.missing_columns.join(', ') || '–') + '</td></tr>'; }).join('') + '</table></div></div>');
   }, failed);
@@ -2571,11 +2582,12 @@ function d2cDayTab(p) {
     if (!d.settings.upi_id) html += '<div class="note warn" style="margin-bottom:12px">UPI ID for payments is not set – Direct (D2C) → Settings.</div>';
     var b = d.batch;
     if (b) {
-      html += '<div class="note good" style="margin-bottom:12px"><b>✓ Confirmed</b> – ' + num(b.orders) + ' homes · ' + money0(b.value) + (b.orders ? ' · invoices ' + esc(b.invoices_from) + ' – ' + esc(b.invoices_to) : '') + '<div class="tiny">' + fdatetime(b.locked_at) + ' by ' + esc(b.locked_by) + (b.exported_at ? ' · Excel downloaded ' + fdatetime(b.exported_at) : '') + (b.imported_at ? ' · delivery Excel uploaded ' + fdatetime(b.imported_at) : '') + '</div>' +
+      html += '<div class="note good" style="margin-bottom:12px"><b>✓ Confirmed</b> – ' + num(b.orders) + ' homes · ' + money0(b.value) + (b.orders ? ' · invoices ' + esc(b.invoices_from) + ' – ' + esc(b.invoices_to) : '') + '<div class="tiny">' + fdatetime(b.locked_at) + ' by ' + esc(b.locked_by) + (b.exported_at ? ' · Excel downloaded ' + fdatetime(b.exported_at) : '') + (b.imported_at ? ' · delivery Excel uploaded ' + fdatetime(b.imported_at) : '') + (b.emailed_at ? ' · list e-mailed ' + fdatetime(b.emailed_at) : '') + '</div>' +
         '<div class="actions" style="margin-top:8px">' + (can('d2c.batch') ? '<button class="btn sm" onclick="d2cDownload(this,' + js(d.date) + ')">Download Excel for company</button><button class="btn sm ghost" onclick="d2cDownload(this,' + js(d.date) + ',\'OWN\')">Our team list</button><button class="btn sm ghost" onclick="d2cUploadDeliveries(' + js(d.date) + ')">Upload delivery Excel</button>' : '') +
+        (can('d2c.admin') ? '<button class="btn sm ghost" onclick="act(this,\'Sending…\',function(){return call(\'d2cEmailOrders\',' + js(d.date) + ')}).then(refresh,swallow)">' + (b.emailed_at ? 'E-mail list again' : 'E-mail list now') + '</button>' : '') +
         (can('d2c.deliver') ? '<button class="btn sm ghost" onclick="go(\'d2cDeliver\',{date:' + js(d.date) + '})">Delivery screen</button>' : '') + '</div></div>';
     } else if (d.past_cutoff) {
-      html += '<div class="note warn" style="margin-bottom:12px"><b>Ordering closed</b> at ' + esc(d.deadline) + '. ' + (d.auto_lock ? 'Orders are confirmed automatically within 15 minutes.' : 'Confirm the orders to make the invoices and the Excel for the company.') +
+      html += '<div class="note warn" style="margin-bottom:12px"><b>Ordering closed</b> at ' + esc(d.deadline) + '. ' + (d.auto_lock ? 'Orders are confirmed automatically within 5 minutes.' : 'Confirm the orders to make the invoices and the Excel for the company.') +
         '<div style="margin-top:6px">Expected: <b>' + num(d.projection.homes) + ' homes · ' + money0(d.projection.value) + '</b></div>' + (can('d2c.batch') ? '<div class="actions" style="margin-top:8px"><button class="btn sm" onclick="d2cLock(this,' + js(d.date) + ',false)">Confirm orders &amp; make invoices</button></div>' : '') + '</div>';
     } else {
       html += '<div class="note" style="margin-bottom:12px"><b>Open for orders</b> until ' + esc(d.deadline) + '. Expected so far: <b>' + num(d.projection.homes) + ' homes · ' + money0(d.projection.value) + '</b>' + (d.projection.sub_homes ? ' (' + num(d.projection.sub_homes) + ' from subscriptions)' : '') +
@@ -2958,7 +2970,7 @@ function d2cCommForm(c) {
 }
 
 /* ------------------------------ Settings ------------------------------ */
-var D2C_SET_LABELS = { d2c_morning_by: 'Who delivers the MORNING slot (milk, curd, paneer): COMPANY = company staff get the Excel, OWN = our team', d2c_evening_by: 'Who delivers the EVENING slot (ghee, honey …): COMPANY or OWN', d2c_whatsapp: 'WhatsApp number for customers (chat button on the dairy page)', d2c_slot_morning: 'Morning delivery time shown to customers', d2c_slot_evening: 'Evening delivery time shown to customers', public_app_url: 'App address (where index.html / shop.html are hosted, e.g. https://arhaanagencies.github.io/app)', d2c_shop_name: 'Shop name (shown to customers)', d2c_support_phone: 'Support phone (shown to customers)', d2c_cutoff_time: 'Order cut-off time (24h, e.g. 13:00)', d2c_cutoff_days_before: 'Cut-off is how many days before delivery',
+var D2C_SET_LABELS = { d2c_email_auto: 'E-mail the order list automatically after the cut-off (YES/NO)', d2c_email_to: 'E-mail the order list TO (your e-mail; several separated by commas)', d2c_email_cc: 'CC the order list to (the company / supplier e-mail, so the order reaches them)', d2c_morning_by: 'Who delivers the MORNING slot (milk, curd, paneer): COMPANY = company staff get the Excel, OWN = our team', d2c_evening_by: 'Who delivers the EVENING slot (ghee, honey …): COMPANY or OWN', d2c_whatsapp: 'WhatsApp number for customers (chat button on the dairy page)', d2c_slot_morning: 'Morning delivery time shown to customers', d2c_slot_evening: 'Evening delivery time shown to customers', public_app_url: 'App address (where index.html / shop.html are hosted, e.g. https://arhaanagencies.github.io/app)', d2c_shop_name: 'Shop name (shown to customers)', d2c_support_phone: 'Support phone (shown to customers)', d2c_cutoff_time: 'Order cut-off time (24h, e.g. 13:00)', d2c_cutoff_days_before: 'Cut-off is how many days before delivery',
   d2c_days_ahead: 'Customers can order up to … days ahead', d2c_closed_dates: 'Holidays – no delivery (dates, comma separated)', d2c_min_order_value: 'Minimum order value ₹ (0 = none)', d2c_auto_approve: 'Approve self-registrations automatically (YES/NO)',
   d2c_pod_photo_required: 'Delivery photo required (YES/NO)', d2c_payment_proof_required: 'UPI screenshot required (YES/NO)', d2c_cash_allowed: 'Cash allowed (YES/NO)', d2c_upi_id: 'UPI ID for payments (VPA)', d2c_upi_name: 'Payee name on UPI', d2c_session_days: 'Customer stays logged in for … days' };
 function d2cSettingsTab() {
@@ -2971,7 +2983,7 @@ function d2cSettingsTab() {
     html += '<div class="section"><div class="section-head"><h3>Shop banners</h3><button class="btn sm ghost" onclick="bnAdd()">Add banner</button></div><div class="small muted" style="margin-bottom:8px">Shown at the top of the customer page. When none are set, banners are made automatically from your offers and delivery times.</div><div id="bnList"></div><div class="actions" style="margin-top:8px"><button class="btn sm" onclick="bnSave(this)">Save banners</button></div></div>';
     html += '<div class="section"><h3>Rules</h3><div class="form" id="sF">' + s.values.filter(function (v) { return v.key !== 'd2c_banners'; }).map(function (v) { return '<label class="field"><span>' + esc(D2C_SET_LABELS[v.key] || v.key) + '</span><input name="' + attr(v.key) + '" value="' + attr(v.value) + '" placeholder="' + attr(v.default_value) + '"></label>'; }).join('') +
       '<div class="actions"><button class="btn" onclick="act(this,\'Saving…\',function(){return call(\'d2cSaveSettings\',formVals(\'sF\'))}).then(refresh,swallow)">Save settings</button></div></div></div>';
-    html += '<div class="section"><h3>Automatic confirmation at the cut-off</h3><div class="note ' + (s.auto_lock ? 'good' : 'warn') + '">' + (s.auto_lock ? 'ON – every 15 minutes the app confirms any date whose cut-off has passed and makes the invoices.' : 'OFF – someone must press "Confirm orders" every day after the cut-off.') + '</div>' +
+    html += '<div class="section"><h3>Automatic confirmation at the cut-off</h3><div class="note ' + (s.auto_lock ? 'good' : 'warn') + '">' + (s.auto_lock ? 'ON – every 5 minutes the app confirms any date whose cut-off has passed, makes the invoices and e-mails the order list (To / CC set above).' : 'OFF – someone must press "Confirm orders" every day after the cut-off.') + '</div>' +
       '<div class="actions" style="margin-top:8px"><button class="btn sm' + (s.auto_lock ? ' ghost' : '') + '" onclick="act(this,\'Saving…\',function(){return call(\'d2cSetAutoLock\',' + (!s.auto_lock) + ')}).then(refresh,swallow)">' + (s.auto_lock ? 'Switch off' : 'Switch on') + '</button></div></div>';
     html += '<div class="section"><h3>Data size</h3><div class="note small">' + (s.separate_book ? '✓ Home-delivery data is kept in its own spreadsheet.' : 'Home-delivery data is in the main spreadsheet. With hundreds of homes every day, move it to its own spreadsheet <b>before going live</b> so the main database stays fast.') + '</div>' +
       '<div class="actions" style="margin-top:8px">' + (s.separate_book ? '' : '<button class="btn sm ghost" onclick="act(this,\'Creating…\',function(){return call(\'d2cCreateSpreadsheet\')}).then(refresh,swallow)">Create separate spreadsheet</button>') +
