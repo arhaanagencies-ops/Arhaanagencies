@@ -6,11 +6,29 @@
 /* Talks to the Arhaan Apps Script server without Google sign-in (works on phones with several Google accounts). */
 (function () {
   var URL_ = window.ARHAAN_API_URL || '';
+  /* Read-only calls are safe to repeat, so a dropped connection is retried quietly. Anything that saves is never repeated automatically. */
+  var SAFE = /^(get|list|find|search|ping|runReport|loginAppUser|shopPublicInfo|shopBoot|shopPlan|shopOrders|shopInvoice|shopNote|shopDues|shopMyFeedback|shopLogin|d2c(Dashboard|ListOrders|GetOrder|ListPayments|Dues|ListCustomers|GetCustomer|ListCommunities|GetSettings|Print|DeliveryList|ListFeedback))/;
+  function shown(msg) { var e = new Error(msg); e.shown = true; return e; }
+  function once(fn, args) {
+    var ctl = typeof AbortController === 'function' ? new AbortController() : null, timer = ctl ? setTimeout(function () { ctl.abort(); }, 100000) : 0;
+    return fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: fn, args: args }), redirect: 'follow', credentials: 'omit', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { clearTimeout(timer); if (!r.ok) { var e = new Error('Server error ' + r.status); e.status = r.status; throw e; } return r.text(); })
+      .then(function (t) { try { return JSON.parse(t); } catch (e) { var x = new Error('answer'); x.notJson = true; throw x; } }, function (e) { clearTimeout(timer); throw e; });
+  }
   function post(fn, args) {
-    if (!/^https?:\/\//.test(URL_)) return Promise.reject(new Error('App is not connected yet: put the web-app /exec link in config.js.'));
-    return fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: fn, args: args }), redirect: 'follow', credentials: 'omit' })
-      .then(function (r) { if (!r.ok) throw new Error('Server error ' + r.status); return r.text(); })
-      .then(function (t) { try { return JSON.parse(t); } catch (e) { throw new Error('The server did not answer correctly. Check that the web app is deployed with access "Anyone".'); } });
+    if (!/^https?:\/\//.test(URL_)) return Promise.reject(shown('App is not connected yet: put the web-app /exec link in config.js.'));
+    var real = (fn === 'callWithSession' || fn === 'callShop') ? String(args[0] || '') : fn;   // the method the page really asks for
+    var safe = SAFE.test(real), tries = safe ? 3 : 1, n = 0;
+    function go() {
+      n++;
+      return once(fn, args).catch(function (e) {
+        if (e.notJson) throw shown('The server did not answer correctly. Check that the web app is deployed with access "Anyone".');
+        if (safe && n < tries && !(e.status && e.status < 500 && e.status !== 429)) return new Promise(function (res) { setTimeout(res, 900 * n); }).then(go);
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) throw shown('No internet connection. Please check your network and try again.');
+        throw shown(safe ? 'The server is busy right now. Please try again in a few seconds.' : 'The connection dropped. Your last action may or may not have been saved – please check the list before trying again.');
+      });
+    }
+    return go();
   }
   function make(ok, fail) {
     return new Proxy({}, { get: function (t, name) {
@@ -19,7 +37,7 @@
       return function () {
         var args = [].slice.call(arguments);
         post(name, args).then(function (r) { if (r.error) { if (fail) fail(new Error(r.error)); } else if (ok) ok(r.result); },
-          function (e) { if (fail) fail(new Error(/connected|answer/.test(e.message) ? e.message : 'Cannot reach the server – check the internet and try again.')); });
+          function (e) { if (fail) fail(new Error(e && e.shown ? e.message : 'Cannot reach the server – check the internet and try again.')); });
       };
     } });
   }
@@ -343,6 +361,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--
 .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .qr-box{display:inline-block;width:min(240px,70vw);padding:8px;background:#fff;border:1px solid var(--line);border-radius:12px}
 .qr-box svg{width:100%;height:auto;display:block}
+.hbtn.spinning svg{animation:hspin .8s linear}@keyframes hspin{to{transform:rotate(360deg)}}
 </style>
 
 <style>

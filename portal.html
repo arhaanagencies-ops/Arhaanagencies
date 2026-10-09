@@ -6,11 +6,29 @@
 /* Talks to the Arhaan Apps Script server without Google sign-in (works on phones with several Google accounts). */
 (function () {
   var URL_ = window.ARHAAN_API_URL || '';
+  /* Read-only calls are safe to repeat, so a dropped connection is retried quietly. Anything that saves is never repeated automatically. */
+  var SAFE = /^(get|list|find|search|ping|runReport|loginAppUser|shopPublicInfo|shopBoot|shopPlan|shopOrders|shopInvoice|shopNote|shopDues|shopMyFeedback|shopLogin|d2c(Dashboard|ListOrders|GetOrder|ListPayments|Dues|ListCustomers|GetCustomer|ListCommunities|GetSettings|Print|DeliveryList|ListFeedback))/;
+  function shown(msg) { var e = new Error(msg); e.shown = true; return e; }
+  function once(fn, args) {
+    var ctl = typeof AbortController === 'function' ? new AbortController() : null, timer = ctl ? setTimeout(function () { ctl.abort(); }, 100000) : 0;
+    return fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: fn, args: args }), redirect: 'follow', credentials: 'omit', signal: ctl ? ctl.signal : undefined })
+      .then(function (r) { clearTimeout(timer); if (!r.ok) { var e = new Error('Server error ' + r.status); e.status = r.status; throw e; } return r.text(); })
+      .then(function (t) { try { return JSON.parse(t); } catch (e) { var x = new Error('answer'); x.notJson = true; throw x; } }, function (e) { clearTimeout(timer); throw e; });
+  }
   function post(fn, args) {
-    if (!/^https?:\/\//.test(URL_)) return Promise.reject(new Error('App is not connected yet: put the web-app /exec link in config.js.'));
-    return fetch(URL_, { method: 'POST', headers: { 'Content-Type': 'text/plain;charset=utf-8' }, body: JSON.stringify({ fn: fn, args: args }), redirect: 'follow', credentials: 'omit' })
-      .then(function (r) { if (!r.ok) throw new Error('Server error ' + r.status); return r.text(); })
-      .then(function (t) { try { return JSON.parse(t); } catch (e) { throw new Error('The server did not answer correctly. Check that the web app is deployed with access "Anyone".'); } });
+    if (!/^https?:\/\//.test(URL_)) return Promise.reject(shown('App is not connected yet: put the web-app /exec link in config.js.'));
+    var real = (fn === 'callWithSession' || fn === 'callShop') ? String(args[0] || '') : fn;   // the method the page really asks for
+    var safe = SAFE.test(real), tries = safe ? 3 : 1, n = 0;
+    function go() {
+      n++;
+      return once(fn, args).catch(function (e) {
+        if (e.notJson) throw shown('The server did not answer correctly. Check that the web app is deployed with access "Anyone".');
+        if (safe && n < tries && !(e.status && e.status < 500 && e.status !== 429)) return new Promise(function (res) { setTimeout(res, 900 * n); }).then(go);
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) throw shown('No internet connection. Please check your network and try again.');
+        throw shown(safe ? 'The server is busy right now. Please try again in a few seconds.' : 'The connection dropped. Your last action may or may not have been saved – please check the list before trying again.');
+      });
+    }
+    return go();
   }
   function make(ok, fail) {
     return new Proxy({}, { get: function (t, name) {
@@ -19,7 +37,7 @@
       return function () {
         var args = [].slice.call(arguments);
         post(name, args).then(function (r) { if (r.error) { if (fail) fail(new Error(r.error)); } else if (ok) ok(r.result); },
-          function (e) { if (fail) fail(new Error(/connected|answer/.test(e.message) ? e.message : 'Cannot reach the server – check the internet and try again.')); });
+          function (e) { if (fail) fail(new Error(e && e.shown ? e.message : 'Cannot reach the server – check the internet and try again.')); });
       };
     } });
   }
@@ -343,6 +361,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--
 .stepper input::-webkit-outer-spin-button,.stepper input::-webkit-inner-spin-button{-webkit-appearance:none;margin:0}
 .qr-box{display:inline-block;width:min(240px,70vw);padding:8px;background:#fff;border:1px solid var(--line);border-radius:12px}
 .qr-box svg{width:100%;height:auto;display:block}
+.hbtn.spinning svg{animation:hspin .8s linear}@keyframes hspin{to{transform:rotate(360deg)}}
 </style>
 
 </head>
@@ -366,6 +385,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--
     <div class="logo" id="hLogo">AA</div>
     <div class="who"><b id="hCompany">Arhaan Agencies</b><span id="hUser"></span></div>
     <span class="clock hide-mob" id="hClock"></span>
+    <button class="hbtn" id="hRefresh" onclick="hardRefresh(this)" aria-label="Refresh this page" title="Refresh"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-3-6.7"/><path d="M21 3v6h-6"/></svg></button>
     <button class="hbtn" onclick="go('notifications')" aria-label="Notifications"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 8a6 6 0 1 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg><span class="dot hidden" id="hUnread">0</span></button>
     <button class="hbtn hide-mob" onclick="go('profile')">Profile</button>
     <button class="hbtn" onclick="doLogout()">Logout</button>
@@ -681,6 +701,7 @@ function go(view, params, opt) {
   try { fn(S.params); } catch (e) { showErr(e); }
 }
 function back() { var p = S.stack.pop(); if (p) { S.view = p.view; S.params = p.params; paintNav(); (VIEWS[p.view] || VIEWS.home)(p.params); window.scrollTo(0, 0); } else go(group() === 'PARTNER' ? 'd2cDeliver' : 'home', {}, { reset: true }); }
+function hardRefresh(btn) { try { S.cache = {}; } catch (e) {} if (btn) { btn.classList.add('spinning'); setTimeout(function () { btn.classList.remove('spinning'); }, 900); } call('ping').then(function (r) { setUnread(r.unread); }, swallow); refresh(); toast('Refreshed'); }
 function refresh() { (VIEWS[S.view] || VIEWS.home)(S.params); }
 function setMain(html) { $('main').innerHTML = html; try { var on = document.querySelector('#main .tabs button.on'); if (on && on.parentElement.scrollWidth > on.parentElement.clientWidth) on.parentElement.scrollLeft = Math.max(0, on.offsetLeft - 40); } catch (e) {} }
 function head(title, sub, right) {
@@ -938,13 +959,13 @@ function changeCustomerStatus(id, current) {
 
 VIEWS.outletForm = function (p) {
   p = p || {};
-  var admin = can('customer.admin');
-  Promise.all([call('listBeats', {}), admin ? call('listSalesmen') : Promise.resolve([]), p.id ? call('getCustomer', p.id) : Promise.resolve(null)]).then(function (r) {
+  var admin = can('customer.admin'), pick = admin || group() === 'CLERK' || group() === 'ACCOUNTS';
+  Promise.all([call('listBeats', {}), pick ? call('listSalesmen') : Promise.resolve([]), p.id ? call('getCustomer', p.id) : Promise.resolve(null)]).then(function (r) {
     var beats = r[0], sms = r[1], c = r[2] || {}, edit = !!p.id;
     S.cache.formBeats = beats;
     var html = head(edit ? 'Edit outlet' : 'New retail outlet', companyLine() + (admin ? '' : ' · Admin will approve new outlets'));
     html += '<div class="section"><div class="form" id="outletForm">';
-    if (admin) html += '<div class="grid2"><label class="field"><span>Salesman <em>*</em></span><select name="salesman_id" id="ofSm" onchange="outletBeatOptions()">' + opts(sms, c.salesman_id, 'Select salesman', 'user_id', 'name') + '</select><small>Only salesmen with access to this company are listed.</small></label>' +
+    if (pick) html += '<div class="grid2"><label class="field"><span>Salesman <em>*</em></span><select name="salesman_id" id="ofSm" onchange="outletBeatOptions()">' + opts(sms, c.salesman_id, 'Select salesman', 'user_id', 'name') + '</select><small>Only salesmen with access to this company are listed.</small></label>' +
       '<label class="field"><span>Beat <em>*</em></span><select name="beat_id" id="ofBeat"></select><small id="ofBeatHint"></small></label></div>';
     else html += '<label class="field"><span>Beat <em>*</em></span><select name="beat_id" id="ofBeat">' + opts(beats, c.beat_id || p.beat_id, 'Select beat', 'beat_id', 'beat_name') + '</select><small>Any active beat of this company.</small></label>';
     html += '<label class="field"><span>Outlet name <em>*</em></span><input name="customer_name" value="' + attr(c.customer_name) + '"></label>' +
@@ -959,7 +980,7 @@ VIEWS.outletForm = function (p) {
       (edit ? '<label class="field"><span>Reason for change</span><input name="change_reason" placeholder="Required when changing salesman or beat"></label>' : '');
     html += '</div></div><div class="sticky-actions"><button class="btn ghost" onclick="back()">Cancel</button><button class="btn" style="flex:1" onclick="saveOutlet(this,' + js(p.id || '') + ')">' + (edit ? 'Save changes' : 'Save outlet') + '</button></div>';
     setMain(html);
-    if (admin) { S.cache.outletPresetBeat = c.beat_id || p.beat_id || ''; outletBeatOptions(); }
+    if (pick) { S.cache.outletPresetBeat = c.beat_id || p.beat_id || ''; outletBeatOptions(); }
   }, failed);
 };
 function outletBeatOptions() {
@@ -998,7 +1019,7 @@ var O = null;
 VIEWS.order = function (p) {
   p = p || {};
   call('getOrderFormData', p.edit || '').then(function (d) {
-    O = { edit: p.edit || '', products: d.products, beats: d.beats, salesmen: d.salesmen, admin: isAdmin() || group() === 'CLERK', salesman_id: '', beat_id: '', customer: null, customers: [], lines: [], date: '', month: today().slice(0, 7), po: '', remarks: '', status: '', pay: '', shipSame: true, shipName: '', shipAddr: '', shipMobile: '' };
+    O = { edit: p.edit || '', products: d.products, beats: d.beats, salesmen: d.salesmen, admin: isAdmin() || group() === 'CLERK' || group() === 'ACCOUNTS', backdate: isAdmin(), orderDate: '', salesman_id: '', beat_id: '', customer: null, customers: [], lines: [], date: '', month: today().slice(0, 7), po: '', remarks: '', status: '', pay: '', shipSame: true, shipName: '', shipAddr: '', shipMobile: '' };
     if (d.order) {
       O.salesman_id = d.order.salesman_id; O.beat_id = d.order.beat_id; O.date = d.order.requested_delivery_date || ''; O.po = d.order.customer_po; O.remarks = d.order.remarks; O.status = d.order.status; O.pay = d.order.payment_type || ''; O.shipSame = d.order.ship_same !== false && d.order.ship_same !== 'NO'; O.shipName = d.order.ship_name || ''; O.shipAddr = d.order.ship_address || ''; O.shipMobile = d.order.ship_mobile || '';
       if (O.date) O.month = O.date.slice(0, 7);
@@ -1030,7 +1051,8 @@ function renderOrderForm() {
   html += '<div id="ordCustBox">' + orderCustomerBox() + '</div></div></div>';
   html += '<div class="section"><div class="section-head"><h3>Products</h3><span class="muted small">Quantity in pieces (PCS)</span></div>' +
     searchBox('prodQ', 'Search product, brand or pack', 'renderProductPicker()') + '<div class="picker" id="prodPicker" style="margin-top:8px"></div><div id="ordLines" style="margin-top:10px"></div></div>';
-  html += '<div class="section"><h3>Delivery date</h3><div id="ordCal">' + (O.customer ? '<div class="empty">Loading delivery days…</div>' : '<div class="muted small">Select the outlet to see available delivery days.</div>') + '</div></div>';
+  if (O.backdate && !O.edit) html += '<div class="section"><h3>Order date <span class="muted small">(Admin only)</span></h3><label class="field"><input type="date" id="ordDateIn" max="' + today() + '" value="' + attr(O.orderDate || today()) + '" onchange="setOrderDate(this.value)"><small id="ordDateNote">' + orderDateNote() + '</small></label></div>';
+  html += '<div class="section"><h3>Delivery date</h3><div id="ordCal">' + (isBackDated() ? backDeliveryBox() : O.customer ? '<div class="empty">Loading delivery days…</div>' : '<div class="muted small">Select the outlet to see available delivery days.</div>') + '</div></div>';
   html += '<div class="section"><h3>Payment <em style="color:var(--bad)">*</em></h3><div class="seg" id="ordPay"><button type="button" class="' + (O.pay === 'CASH' ? 'on' : '') + '" onclick="O.pay=\'CASH\';renderOrderPay()">Cash &amp; carry</button><button type="button" class="' + (O.pay === 'CREDIT' ? 'on' : '') + '" onclick="O.pay=\'CREDIT\';renderOrderPay()">Credit</button></div><div class="muted small" id="ordPayNote" style="margin-top:6px">' + orderPayNote() + '</div></div>';
   html += '<div class="section"><h3>Ship To <em style="color:var(--bad)">*</em></h3><div class="muted small" style="margin-bottom:6px">Is the Ship To the same as the Bill To (the outlet)?</div><div class="seg" id="ordShip"><button type="button" class="' + (O.shipSame ? 'on' : '') + '" onclick="O.shipSame=true;renderOrderShip()">Same as Bill To</button><button type="button" class="' + (!O.shipSame ? 'on' : '') + '" onclick="O.shipSame=false;renderOrderShip()">Different</button></div>' +
     '<div id="ordShipBox" style="' + (O.shipSame ? 'display:none' : '') + ';margin-top:8px"><label>Ship To name<input id="shName" value="' + esc(O.shipName) + '" oninput="O.shipName=this.value"></label><label>Ship To address<textarea id="shAddr" rows="2" oninput="O.shipAddr=this.value">' + esc(O.shipAddr) + '</textarea></label><label>Ship To mobile (optional)<input id="shMob" inputmode="tel" value="' + esc(O.shipMobile) + '" oninput="O.shipMobile=this.value"></label><div class="muted small">Printed on the invoice only when it is different from Bill To.</div></div></div>';
@@ -1039,8 +1061,12 @@ function renderOrderForm() {
   html += '<div class="sticky-actions">' + (!O.edit || O.status === 'DRAFT' ? '<button class="btn ghost" onclick="submitOrder(this,true)">Save draft</button>' : '<button class="btn ghost" onclick="back()">Cancel</button>') + '<button class="btn" style="flex:1" onclick="submitOrder(this,false)">' + (O.edit && O.status !== 'DRAFT' ? 'Save changes' : 'Submit order') + '</button></div>';
   setMain(html);
   renderProductPicker(); renderOrderLines();
-  if (O.customer && S.cache.calendar) drawCalendar();
+  if (O.customer && S.cache.calendar && !isBackDated()) drawCalendar();
 }
+function isBackDated() { return !!(O.backdate && !O.edit && O.orderDate && O.orderDate < today()); }
+function orderDateNote() { return isBackDated() ? 'Back-dated order: the delivery day can be any date from the order date; booking cut-off is not applied.' : 'Today. Pick an earlier day to punch a past order.'; }
+function backDeliveryBox() { return '<label class="field"><span>Delivery date <em>*</em></span><input type="date" id="ordBackDel" min="' + attr(O.orderDate) + '" value="' + attr(O.date || O.orderDate) + '" onchange="O.date=this.value;updateOrderTotal()"></label>'; }
+function setOrderDate(v) { O.orderDate = v && v < today() ? v : ''; if (isBackDated()) { if (!O.date || O.date < O.orderDate) O.date = O.orderDate; } else if (O.date && O.date < today()) O.date = ''; $('ordDateNote').textContent = orderDateNote(); $('ordCal').innerHTML = isBackDated() ? backDeliveryBox() : (O.customer ? '<div class="empty">Loading delivery days…</div>' : '<div class="muted small">Select the outlet to see available delivery days.</div>'); if (!isBackDated() && O.customer) loadCalendar(); updateOrderTotal(); }
 function orderCustomerBox() {
   if (O.admin && !O.salesman_id) return '<div class="muted small">Select the salesman first.</div>';
   if (!O.beat_id) return '<div class="muted small">Select a beat to list its outlets.</div>';
@@ -1065,15 +1091,21 @@ function renderOrderCustomers() {
 }
 function pickOrderCustomer(id) {
   O.customer = O.customers.filter(function (c) { return c.customer_id === id; })[0];
-  S.cache.calendar = null; O.date = O.edit ? O.date : '';
-  $('ordCustBox').innerHTML = orderCustomerBox(); loadCalendar();
+  S.cache.calendar = null; O.date = O.edit || isBackDated() ? O.date : '';
+  $('ordCustBox').innerHTML = orderCustomerBox(); if (!isBackDated()) loadCalendar();
 }
 function renderProductPicker() {
   var q = val('prodQ').toLowerCase(), el = $('prodPicker'); if (!el) return;
   var rows = O.products.filter(function (p) { return !q || (p.label + ' ' + p.brand + ' ' + p.sku_id).toLowerCase().indexOf(q) >= 0; });
   if (!q && O.lines.length) { el.style.display = 'none'; el.innerHTML = ''; if (!$('prodMore')) el.insertAdjacentHTML('afterend', ''); return; }
   el.style.display = '';
+  var seenG = {};
   el.innerHTML = rows.length ? rows.slice(0, 80).map(function (p) { var inOrder = O.lines.some(function (l) { return l.sku_id === p.sku_id; });
+    if (p.twin) {
+      if (seenG[p.group]) return ''; seenG[p.group] = true;
+      var tw = rows.filter(function (x) { return x.group === p.group; }).sort(function (a, b) { return a.mrp - b.mrp; });
+      return '<div class="row static" style="flex-wrap:wrap"><div class="m"><b>' + esc(p.label) + '</b><span>' + esc(p.brand) + ' · two MRPs running – choose</span></div><div class="actions" style="width:100%;margin-top:6px">' + tw.map(function (x, k) { var on = O.lines.some(function (l) { return l.sku_id === x.sku_id; }); return '<button type="button" class="btn sm ' + (on ? '' : 'ghost') + '" onclick="addOrderLine(' + js(x.sku_id) + ')">' + (tw.length === 2 ? (k === 0 ? 'Old' : 'New') + ' MRP ' : 'MRP ') + money0(x.mrp) + ' · ' + money(x.retail_price) + (on ? ' ✓' : '') + '</button>'; }).join('') + '</div></div>';
+    }
     return '<button class="row' + (inOrder ? ' sel' : '') + '" onclick="addOrderLine(' + js(p.sku_id) + ')">' + (p.d2c_image ? '<img class="pthumb" alt="" loading="lazy" src="' + attr(p.d2c_image) + '">' : '') + '<div class="m"><b>' + esc(p.label) + '</b><span>' + esc(p.brand) + ' · MRP ' + money(p.mrp) + ' · case ' + num(p.case_pack) + ' pcs</span></div><div class="r"><b>' + money(p.retail_price) + '</b>' + (inOrder ? '<span class="tiny muted">added</span>' : '') + '</div></button>'; }).join('')
     : emptyState('No product matches', 'Products come from the Product Master of ' + (S.boot.company || {}).company_name + '.');
 }
@@ -1081,7 +1113,7 @@ function addOrderLine(sku) {
   var p = productById(sku); if (!p) return;
   var ex = O.lines.filter(function (l) { return l.sku_id === sku; })[0];
   if (ex) { toast(p.label + ' is already in the order – change its quantity below.'); }
-  else O.lines.push({ sku_id: sku, label: p.label, qty: p.case_pack || 1, rate: p.retail_price, reason: '', retail: p.retail_price, mrp: p.mrp, case_pack: p.case_pack });
+  else O.lines.push({ sku_id: sku, label: p.label_full || p.label, qty: p.case_pack || 1, rate: p.retail_price, reason: '', retail: p.retail_price, mrp: p.mrp, case_pack: p.case_pack });
   $('prodQ').value = ''; renderProductPicker(); renderOrderLines();
   var el = document.querySelector('#ordLines .line:last-child input'); if (el && !ex) el.focus();
 }
@@ -1153,7 +1185,7 @@ function submitOrder(btn, draft) {
   if (!draft && !O.date) return toast('Pick a delivery date.', 'bad');
   if (!draft && !O.pay) return toast('Select Cash & carry or Credit.', 'bad');
   if (!draft && !O.shipSame && (!String(O.shipName || '').trim() || !String(O.shipAddr || '').trim())) return toast('Ship To is different: enter the ship-to name and address.', 'bad');
-  var payload = { order_id: O.edit, customer_id: O.customer.customer_id, salesman_id: O.salesman_id, beat_id: O.beat_id, requested_delivery_date: O.date, customer_po: O.po, remarks: O.remarks, payment_type: O.pay, ship_same: !!O.shipSame, ship_name: O.shipName, ship_address: O.shipAddr, ship_mobile: O.shipMobile, draft: !!draft,
+  var payload = { order_id: O.edit, customer_id: O.customer.customer_id, salesman_id: O.salesman_id, beat_id: O.beat_id, requested_delivery_date: O.date, order_date: isBackDated() ? O.orderDate : '', customer_po: O.po, remarks: O.remarks, payment_type: O.pay, ship_same: !!O.shipSame, ship_name: O.shipName, ship_address: O.shipAddr, ship_mobile: O.shipMobile, draft: !!draft,
     lines: O.lines.map(function (l) { return { order_line_id: l.order_line_id || '', sku_id: l.sku_id, qty: Number(l.qty), rate: Number(l.rate), price_override_reason: l.reason || '' }; }) };
   act(btn, draft ? 'Saving draft…' : 'Submitting…', function () { return call(O.edit ? 'updateOrder' : 'createOrder', payload); }).then(function (r) {
     S.cache.calendar = null; go('orderDetail', { id: r.order_id }, { replace: true });
@@ -1392,7 +1424,7 @@ function openInvoiceForm(orderId) {
       '<div class="tbl-wrap" style="margin-bottom:10px"><table class="tbl"><tr><th>Product</th><th>HSN</th><th class="n">Qty</th><th class="n">Rate incl.</th><th class="n">GST</th><th class="n">Taxable</th>' + gstCols + '<th class="n">Amount</th></tr>' +
       d.lines.map(function (l) { return '<tr><td>' + esc(l.product_name) + '</td><td>' + esc(l.hsn) + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + money(l.rate_incl) + '</td><td class="n">' + l.gst_rate + '%</td><td class="n">' + money(l.taxable) + '</td>' + (d.inter_state ? '<td class="n">' + money(l.igst) + '</td>' : '<td class="n">' + money(l.cgst) + '</td><td class="n">' + money(l.sgst) + '</td>') + '<td class="n">' + money(l.gross) + '</td></tr>'; }).join('') +
       '</table></div><dl class="kv" style="margin-bottom:10px"><dt>Taxable value</dt><dd class="num">' + money(d.taxable_value) + '</dd>' + (d.inter_state ? '<dt>IGST</dt><dd class="num">' + money(d.igst) + '</dd>' : '<dt>CGST</dt><dd class="num">' + money(d.cgst) + '</dd><dt>SGST</dt><dd class="num">' + money(d.sgst) + '</dd>') + '<dt>Round off</dt><dd class="num">' + money(d.round_off) + '</dd><dt><b>Invoice total</b></dt><dd class="num"><b>' + money(d.invoice_value) + '</b></dd></dl>' +
-      '<div class="form"><label class="field"><span>Invoice date</span><input type="date" id="invDate" max="' + today() + '" value="' + today() + '"><small>Number is issued automatically from the ' + esc((S.boot.company || {}).company_name) + ' series and stock is deducted.</small></label>' +
+      '<div class="form"><label class="field"><span>Invoice date</span><input type="date" id="invDate" ' + (d.order_date ? 'min="' + attr(d.order_date) + '" ' : '') + 'max="' + today() + '" value="' + today() + '"><small>Choose the date this invoice should carry (today or earlier, not before the order date ' + (d.order_date ? fdate(d.order_date) : '') + '). Number is issued automatically from the ' + esc((S.boot.company || {}).company_name) + ' series and stock is deducted.</small></label>' +
       '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="invOk"' + (d.missing.length || !d.profile_ok ? ' disabled' : '') + '>Raise invoice ' + money0(d.invoice_value) + '</button></div></div>';
     openModal(html);
     $('invOk').onclick = function () {
@@ -1464,6 +1496,7 @@ VIEWS.collectForm = function (p) {
       '<div class="field"><span>Payment type <em>*</em></span><div class="tabs" style="margin:0"><button type="button" id="ptInv" class="' + (d.open_invoices.length ? 'on' : '') + '" onclick="setPayType(\'AGAINST INVOICE\')">Against invoice</button><button type="button" id="ptAdv" class="' + (d.open_invoices.length ? '' : 'on') + '" onclick="setPayType(\'ADVANCE PAYMENT\')">Advance payment</button></div></div>' +
       '<input type="hidden" name="payment_nature" id="ptVal" value="' + (d.open_invoices.length ? 'AGAINST INVOICE' : 'ADVANCE PAYMENT') + '">' +
       '<label class="field" id="invField"><span>Invoice number <em>*</em></span><select name="invoice_id" id="colInv" onchange="invPicked()">' + opts(d.open_invoices.map(function (i) { return { value: i.invoice_id, label: i.invoice_number + ' · ' + fdate(i.invoice_date) + ' · balance ' + money(i.balance) + (i.overdue ? ' · overdue' : '') }; }), d.open_invoices.length === 1 ? d.open_invoices[0].invoice_id : '', 'Select invoice') + '</select>' + (d.open_invoices.length ? '' : '<small>No open invoice – record as advance.</small>') + '</label>' +
+      '<label class="field"><span>Payment received on <em>*</em></span><input type="date" name="payment_date" max="' + today() + '" value="' + today() + '"><small>The date the money was actually received.</small></label>' +
       '<div class="grid2"><label class="field"><span>Amount (₹) <em>*</em></span><input name="amount" id="colAmt" inputmode="decimal" type="number" step="0.01" min="0" oninput="amtHint()"><small id="amtHint"></small></label>' +
       '<label class="field"><span>Mode <em>*</em></span><select name="mode" id="colMode" onchange="modeChanged()">' + opts(d.modes, '', 'Select mode') + '</select></label></div>' +
       '<div class="grid2"><label class="field" id="refF"><span>Reference / UTR</span><input name="reference_no" style="text-transform:uppercase"></label><label class="field hidden" id="chqF"><span>Cheque number <em>*</em></span><input name="cheque_no"></label></div>' +
@@ -2131,15 +2164,15 @@ VIEWS.billing = function (p) {
   var tabs = [['invoices', 'Invoices'], ['credit', 'Credit notes'], ['debit', 'Debit notes'], ['drafts', 'Drafts']];
   var tabHtml = '<div class="tabs">' + tabs.map(function (t) { return '<button class="' + (t[0] === p.tab ? 'on' : '') + '" onclick="go(\'billing\',{tab:\'' + t[0] + '\'},{replace:true})">' + t[1] + '</button>'; }).join('') + '</div>';
   var dates = '<div class="filters" id="blF"><label class="field"><span>From</span><input type="date" name="from" value="' + attr(p.from) + '"></label><label class="field"><span>To</span><input type="date" name="to" value="' + attr(p.to) + '"></label><label class="field"><span>Search</span><input name="q" value="' + attr(p.q || '') + '" placeholder="Number, outlet"></label><div class="actions" style="align-items:flex-end"><button class="btn" onclick="var v=formVals(\'blF\');v.tab=' + js(p.tab).replace(/"/g, '&quot;') + ';go(\'billing\',v,{replace:true})">Apply</button></div></div>';
-  var top = '<div class="actions" style="margin-bottom:12px">' + (can('invoice.create') ? '<button class="btn" onclick="go(\'control\',{stage:\'INVOICE\'})">Orders to invoice</button>' : '') + '</div>';
+  var top = '<div class="actions" style="margin-bottom:12px">' + (can('outlet.report') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="routeSheet(this)">Route sheet (Excel) for selected</button>' : '') + (can('invoice.create') ? '<button class="btn" onclick="go(\'control\',{stage:\'INVOICE\'})">Orders to invoice</button>' : '') + '</div>';
   if (p.tab === 'invoices') {
     call('listInvoices', { status: 'ALL', from: p.from, to: p.to, q: p.q || '' }).then(function (r) {
       var rows = r.rows.slice().sort(function (a, b) { return String(b.invoice_number).localeCompare(String(a.invoice_number)); });
       var live = rows.filter(function (x) { return x.status !== 'CANCELLED'; });
       setMain(head('Invoices & notes', companyLine()) + top + tabHtml + dates +
         '<div class="kpis">' + kpi('Invoices', num(live.length), money0(live.reduce(function (a, x) { return a + x.invoice_value; }, 0)), 'sales') + kpi('Taxable', money0(live.reduce(function (a, x) { return a + x.taxable_value; }, 0)), '') + kpi('GST', money0(live.reduce(function (a, x) { return a + x.gst; }, 0)), '') + kpi('Cancelled', num(rows.length - live.length), '', rows.length - live.length ? 'warn' : '') + '</div>' +
-        '<div class="section">' + (rows.length ? '<div class="rows">' + rows.map(function (i) {
-          return '<div class="row static"><div class="m"><b>' + esc(i.invoice_number) + ' · ' + esc(i.customer_name) + '</b><span>' + fdate(i.invoice_date) + (i.gst_invoice ? ' · taxable ' + money(i.taxable_value) + ' + GST ' + money(i.gst) : ' · Marg / earlier invoice') + ' · ' + esc(i.salesman_name) + '</span>' +
+        '<div class="section">' + (rows.length && can('outlet.report') ? '<label class="chk" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="invAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.invSel\').forEach(function(c){c.checked=this.checked}.bind(this));invSelCount()"> Select all <span class="muted small" id="invSelN"></span></label>' : '') + (rows.length ? '<div class="rows">' + rows.map(function (i) {
+          return '<div class="row static">' + (can('outlet.report') && i.status !== 'CANCELLED' ? '<input type="checkbox" class="invSel" value="' + attr(i.invoice_id) + '" onchange="invSelCount()" style="width:20px;height:20px;min-height:0;flex:none;margin-right:8px">' : '') + '<div class="m"><b>' + esc(i.invoice_number) + ' · ' + esc(i.customer_name) + '</b><span>' + fdate(i.invoice_date) + (i.gst_invoice ? ' · taxable ' + money(i.taxable_value) + ' + GST ' + money(i.gst) : ' · Marg / earlier invoice') + ' · ' + esc(i.salesman_name) + '</span>' +
             (i.credited || i.debited ? '<span class="tiny">credit notes ' + money(i.credited) + ' · debit notes ' + money(i.debited) + '</span>' : '') + '</div><div class="r"><b>' + money(i.invoice_value) + '</b>' + chip(i.status) +
             '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (i.gst_invoice && i.status !== 'CANCELLED' ? '<button class="btn sm ghost" onclick="printDoc(\'INV\',' + js(i.invoice_id) + ')">Print</button>' : '') +
             (i.gst_invoice && i.status !== 'CANCELLED' && can('note.create') ? '<button class="btn sm ghost" onclick="go(\'noteForm\',{invoice_id:' + js(i.invoice_id) + ',type:\'CREDIT\'})">Credit</button><button class="btn sm ghost" onclick="go(\'noteForm\',{invoice_id:' + js(i.invoice_id) + ',type:\'DEBIT\'})">Debit</button>' : '') +
@@ -2159,6 +2192,30 @@ VIEWS.billing = function (p) {
       }).join('') + '</div>' : emptyState(p.tab === 'drafts' ? 'No drafts waiting' : 'No notes in this period', 'Raise a note from an invoice (Invoices → Credit / Debit).')) + '</div>');
   }, failed);
 };
+
+/* --------------- V7.8 route-planning sheet (Excel) from selected invoices --------------- */
+function invSelCount() { var n = document.querySelectorAll('.invSel:checked').length; if ($('invSelN')) $('invSelN').textContent = n ? '(' + n + ' selected)' : ''; }
+function routeSheet(btn) {
+  var ids = Array.prototype.map.call(document.querySelectorAll('.invSel:checked'), function (c) { return c.value; });
+  if (!ids.length) return toast('Tick the invoices first (or "Select all").', 'bad');
+  act(btn, 'Preparing…', function () {
+    return call('getInvoiceOutletSheet', ids).then(function (r) {
+      return loadSheetJs().then(function (XLSX) {
+        var head = ['S.No', 'Customer Name', 'Mobile No', 'Area', 'Location of retail outlet', 'Salesman Name', 'Invoice No', 'Invoice Date', 'Invoice Value', 'Route / Day (fill)', 'Visit order (fill)'];
+        var aoa = [head].concat(r.rows.map(function (x, i) { return [i + 1, x.customer_name, x.mobile, x.area, x.location, x.salesman_name, x.invoice_number, x.invoice_date, x.invoice_value, '', '']; }));
+        var ws = XLSX.utils.aoa_to_sheet(aoa);
+        ws['!cols'] = [6, 30, 14, 18, 48, 18, 16, 12, 12, 16, 14].map(function (w) { return { wch: w }; });
+        r.rows.forEach(function (x, i) { if (x.location) { var c = ws['E' + (i + 2)]; if (c) c.l = { Target: x.location, Tooltip: 'Open in Google Maps' }; } });
+        var seen = {}, uniq = [['Customer Name', 'Mobile No', 'Area', 'Location of retail outlet', 'Salesman Name', 'Address', 'Route / Day (fill)', 'Visit order (fill)']];
+        r.rows.forEach(function (x) { var k = x.customer_name + '|' + x.mobile; if (seen[k]) return; seen[k] = 1; uniq.push([x.customer_name, x.mobile, x.area, x.location, x.salesman_name, x.address, '', '']); });
+        var wb = XLSX.utils.book_new();
+        XLSX.utils.book_append_sheet(wb, ws, 'Invoices'); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(uniq), 'Outlets (unique)');
+        XLSX.writeFile(wb, r.file_name);
+        return { message: '✓ ' + r.file_name + ' downloaded – ' + r.count + ' invoices, ' + (uniq.length - 1) + ' outlets. Edit it freely for route mapping.' };
+      });
+    });
+  }).then(function () {}, swallow);
+}
 
 /* ----------------------------- note form ----------------------------- */
 var NF = null;
@@ -2368,35 +2425,36 @@ function pfAddLine() {
   var sku = val('pfAdd'); if (!sku) return;
   if (PF.lines.some(function (l) { return l.sku_id === sku; })) return toast('Already added.');
   var pr = PF.d.products.filter(function (x) { return x.sku_id === sku; })[0];
-  PF.lines.push({ sku_id: sku, label: pr.label, qty: pr.case_pack || '', rate: pr.last_rate || '', gst_rate: pr.gst, batch_no: '', expiry_date: '', bucket: 'DAMAGED' });
+  PF.lines.push({ sku_id: sku, label: pr.label, qty: pr.case_pack || '', rate: pr.last_rate || '', gst_rate: pr.gst, hsn: pr.hsn || '', hsn_old: pr.hsn || '', batch_no: '', expiry_date: '', bucket: 'DAMAGED' });
   $('pfAdd').value = ''; pfRender();
 }
 function pfRender() {
   var ret = PF.type === 'PURCHASE_RETURN';
   $('pfLines').innerHTML = PF.lines.length ? PF.lines.map(function (l, i) {
-    return '<div class="line"><div class="top"><b>' + esc(l.label) + '</b><button class="btn sm ghost" onclick="PF.lines.splice(' + i + ',1);pfRender()">Remove</button></div><div class="grid3" style="margin-top:8px;grid-template-columns:repeat(3,1fr)">' +
+    return '<div class="line"><div class="top"><b>' + esc(l.label) + '</b><button class="btn sm ghost" onclick="PF.lines.splice(' + i + ',1);pfRender()">Remove</button></div><div class="grid3" style="margin-top:8px;grid-template-columns:repeat(2,1fr)">' +
       '<label class="field"><span>Qty (pcs)</span><input type="number" step="1" min="1" value="' + attr(l.qty) + '" oninput="PF.lines[' + i + '].qty=this.value;pfCalc()"></label><label class="field"><span>Rate before GST ₹</span><input type="number" step="0.01" value="' + attr(l.rate) + '" oninput="PF.lines[' + i + '].rate=this.value;pfCalc()"></label>' +
-      '<label class="field"><span>GST %</span><select onchange="PF.lines[' + i + '].gst_rate=Number(this.value);pfCalc()">' + opts([0, 5, 12, 18, 28, 40].map(function (g) { return { value: g, label: g + '%' }; }), l.gst_rate) + '</select></label></div>' +
+      '<label class="field"><span>HSN code</span><input inputmode="numeric" maxlength="8" value="' + attr(l.hsn) + '" oninput="PF.lines[' + i + '].hsn=this.value.replace(/\\D/g,\'\');pfHsn(' + i + ')"></label><label class="field"><span>GST %</span><select onchange="PF.lines[' + i + '].gst_rate=Number(this.value);pfCalc()">' + opts([0, 5, 12, 18, 28, 40].map(function (g) { return { value: g, label: g + '%' }; }), l.gst_rate) + '</select></label></div>' +
       (ret ? '<label class="field" style="margin-top:8px"><span>Take from</span><select onchange="PF.lines[' + i + '].bucket=this.value">' + opts([{ value: 'DAMAGED', label: 'Damaged / expired stock' }, { value: 'SALEABLE', label: 'Saleable stock' }], l.bucket) + '</select></label>'
         : '<div class="grid2" style="margin-top:8px"><label class="field"><span>Batch</span><input value="' + attr(l.batch_no) + '" oninput="PF.lines[' + i + '].batch_no=this.value"></label><label class="field"><span>Expiry</span><input type="date" value="' + attr(l.expiry_date) + '" oninput="PF.lines[' + i + '].expiry_date=this.value"></label></div>') +
       '<div class="small muted" id="pfL' + i + '" style="margin-top:6px"></div></div>';
   }).join('') : '<div class="muted small">Add each product from the bill.</div>';
   pfCalc();
 }
+function pfHsn(i) { var l = PF.lines[i], el = $('pfL' + i); if (el && l.hsn !== l.hsn_old) el.dataset.hsn = '1'; pfCalc(); }
 function pfCalc() {
   var sel = document.querySelector('[name=supplier_state_code]'), inter = !!sel && sel.value !== PF.d.seller_state_code, t = { tx: 0, tax: 0, tot: 0 };
   PF.lines.forEach(function (l, i) {
     var amt = (Number(l.qty) || 0) * (Number(l.rate) || 0), r = Number(l.gst_rate) || 0;
     var taxable = amt, tax = taxable * r / 100;
     t.tx += taxable; t.tax += tax; t.tot += taxable + tax;
-    var el = $('pfL' + i); if (el) el.textContent = 'Taxable ' + money(taxable) + ' + ' + (inter ? 'IGST ' : 'CGST/SGST ') + money(tax) + ' = ' + money(taxable + tax);
+    var el = $('pfL' + i); if (el) el.textContent = 'Taxable ' + money(taxable) + ' + ' + (inter ? 'IGST ' : 'CGST/SGST ') + money(tax) + ' = ' + money(taxable + tax) + (l.hsn && l.hsn !== l.hsn_old ? ' · HSN changes ' + (l.hsn_old || '(blank)') + ' → ' + l.hsn + ' in Product Master' : '');
   });
   if ($('pfTot')) { $('pfTot').textContent = money(Math.round(t.tot)); $('pfTax').textContent = 'Taxable ' + money(t.tx) + ' · GST ' + money(t.tax); }
 }
 function savePurchase(btn) {
   var h = formVals('pfH');
   var payload = Object.assign(h, { doc_type: PF.type, itc_eligible: $('pfItc').checked, remarks: val('pfRem'),
-    lines: PF.lines.map(function (l) { return { sku_id: l.sku_id, qty: Number(l.qty), rate: Number(l.rate), gst_rate: l.gst_rate, batch_no: l.batch_no, expiry_date: l.expiry_date, bucket: l.bucket }; }) });
+    lines: PF.lines.map(function (l) { return { sku_id: l.sku_id, qty: Number(l.qty), rate: Number(l.rate), gst_rate: l.gst_rate, hsn: l.hsn, batch_no: l.batch_no, expiry_date: l.expiry_date, bucket: l.bucket }; }) });
   act(btn, 'Saving…', function () { return readFile('pfProof').then(function (f) { if (f) { payload.proof_base64 = f.data; payload.proof_file_name = f.name; payload.proof_mime_type = f.mime; } return call('recordPurchase', payload); }); })
     .then(function () { go('stock', { tab: 'purchases' }, { replace: true }); }, swallow);
 }
