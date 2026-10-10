@@ -362,6 +362,7 @@ table.tbl{width:100%;border-collapse:collapse;font-size:13.5px;background:var(--
 .qr-box{display:inline-block;width:min(240px,70vw);padding:8px;background:#fff;border:1px solid var(--line);border-radius:12px}
 .qr-box svg{width:100%;height:auto;display:block}
 .hbtn.spinning svg{animation:hspin .8s linear}@keyframes hspin{to{transform:rotate(360deg)}}
+.stk,.m span.stk,.line span.stk{display:inline-block;width:auto;font-size:11px;font-weight:600;padding:1px 7px;border-radius:10px;margin-top:3px}.stk.ok,.m span.stk.ok{background:#e4f5ea;color:#17703a}.stk.low,.m span.stk.low{background:#fff1d6;color:#8a5a00}.stk.out,.m span.stk.out{background:#fde3e3;color:#a11}
 </style>
 
 </head>
@@ -1104,10 +1105,16 @@ function renderProductPicker() {
     if (p.twin) {
       if (seenG[p.group]) return ''; seenG[p.group] = true;
       var tw = rows.filter(function (x) { return x.group === p.group; }).sort(function (a, b) { return a.mrp - b.mrp; });
-      return '<div class="row static" style="flex-wrap:wrap"><div class="m"><b>' + esc(p.label) + '</b><span>' + esc(p.brand) + ' · two MRPs running – choose</span></div><div class="actions" style="width:100%;margin-top:6px">' + tw.map(function (x, k) { var on = O.lines.some(function (l) { return l.sku_id === x.sku_id; }); return '<button type="button" class="btn sm ' + (on ? '' : 'ghost') + '" onclick="addOrderLine(' + js(x.sku_id) + ')">' + (tw.length === 2 ? (k === 0 ? 'Old' : 'New') + ' MRP ' : 'MRP ') + money0(x.mrp) + ' · ' + money(x.retail_price) + (on ? ' ✓' : '') + '</button>'; }).join('') + '</div></div>';
+      return '<div class="row static" style="flex-wrap:wrap"><div class="m"><b>' + esc(p.label) + '</b><span>' + esc(p.brand) + ' · two MRPs running – choose</span></div><div class="actions" style="width:100%;margin-top:6px">' + tw.map(function (x, k) { var on = O.lines.some(function (l) { return l.sku_id === x.sku_id; }); return '<button type="button" class="btn sm ' + (on ? '' : 'ghost') + '" onclick="addOrderLine(' + js(x.sku_id) + ')">' + (tw.length === 2 ? (k === 0 ? 'Old' : 'New') + ' MRP ' : 'MRP ') + money0(x.mrp) + ' · ' + money(x.retail_price) + (x.stock === null || x.stock === undefined ? '' : x.stock <= 0 ? ' · out of stock' : ' · stock ' + num(x.stock)) + (on ? ' ✓' : '') + '</button>'; }).join('') + '</div></div>';
     }
-    return '<button class="row' + (inOrder ? ' sel' : '') + '" onclick="addOrderLine(' + js(p.sku_id) + ')">' + (p.d2c_image ? '<img class="pthumb" alt="" loading="lazy" src="' + attr(p.d2c_image) + '">' : '') + '<div class="m"><b>' + esc(p.label) + '</b><span>' + esc(p.brand) + ' · MRP ' + money(p.mrp) + ' · case ' + num(p.case_pack) + ' pcs</span></div><div class="r"><b>' + money(p.retail_price) + '</b>' + (inOrder ? '<span class="tiny muted">added</span>' : '') + '</div></button>'; }).join('')
+    return '<button class="row' + (inOrder ? ' sel' : '') + '" onclick="addOrderLine(' + js(p.sku_id) + ')">' + (p.d2c_image ? '<img class="pthumb" alt="" loading="lazy" src="' + attr(p.d2c_image) + '">' : '') + '<div class="m"><b>' + esc(p.label) + '</b><span>' + esc(p.brand) + ' · MRP ' + money(p.mrp) + ' · case ' + num(p.case_pack) + ' pcs</span>' + stockChip(p) + '</div><div class="r"><b>' + money(p.retail_price) + '</b>' + (inOrder ? '<span class="tiny muted">added</span>' : '') + '</div></button>'; }).join('')
     : emptyState('No product matches', 'Products come from the Product Master of ' + (S.boot.company || {}).company_name + '.');
+}
+/* V8.0 stock available now (on hand minus quantity already promised) so nobody orders what is not there */
+function stockChip(p) {
+  if (p.stock === null || p.stock === undefined) return '';
+  var cp = Number(p.case_pack) || 0, cs = cp ? ' (' + Math.floor(p.stock / cp) + ' cases)' : '';
+  return '<span class="stk ' + (p.stock <= 0 ? 'out' : p.stock < (cp || 12) ? 'low' : 'ok') + '">' + (p.stock <= 0 ? 'Out of stock' : 'Stock ' + num(p.stock) + ' pcs' + cs) + '</span>';
 }
 function addOrderLine(sku) {
   var p = productById(sku); if (!p) return;
@@ -1122,7 +1129,7 @@ function renderOrderLines() {
   el.innerHTML = O.lines.map(function (l, i) {
     var low = Number(l.rate) < Number(l.retail) - 0.0001, val = (Number(l.qty) || 0) * (Number(l.rate) || 0);
     return '<div class="line' + (low ? ' low' : '') + '"><div class="top"><b>' + esc(l.label) + '</b><button class="btn sm ghost" onclick="O.lines.splice(' + i + ',1);renderOrderLines();renderProductPicker()">Remove</button></div>' +
-      '<div class="meta">MRP ' + money(l.mrp) + ' · standard ' + money(l.retail) + (l.case_pack ? ' · ' + num(l.case_pack) + ' pcs/case' : '') + '</div>' +
+      '<div class="meta">MRP ' + money(l.mrp) + ' · standard ' + money(l.retail) + (l.case_pack ? ' · ' + num(l.case_pack) + ' pcs/case' : '') + '</div>' + (stockChip(productById(l.sku_id) || {}) ? '<div style="margin:2px 0 4px">' + stockChip(productById(l.sku_id)) + '</div>' : '') +
       '<div class="qtybox"><label class="field"><span>Qty (PCS)</span><input type="number" inputmode="numeric" min="1" step="1" value="' + attr(l.qty) + '" oninput="O.lines[' + i + '].qty=this.value;lineTotals(' + i + ')"></label>' +
       '<label class="field"><span>Price / pc (₹)</span><input type="number" inputmode="decimal" min="0" step="0.01" value="' + attr(l.rate) + '" oninput="O.lines[' + i + '].rate=this.value;lineTotals(' + i + ',true)"></label></div>' +
       '<div id="lnInfo' + i + '" class="small" style="margin-top:6px">' + lineInfo(l) + '</div>' +
@@ -1132,7 +1139,8 @@ function renderOrderLines() {
 }
 function lineInfo(l) {
   var q = Number(l.qty) || 0, r = Number(l.rate) || 0, cp = Number(l.case_pack) || 0;
-  var t = '<b class="num">' + money(q * r) + '</b> <span class="muted">' + num(q) + ' pcs × ' + money(r) + (cp ? ' · ' + (q / cp).toFixed(2) + ' cases' : '') + '</span>';
+  var pr = productById(l.sku_id), over = pr && pr.stock !== null && pr.stock !== undefined && q > pr.stock;
+  var t = (over ? '<span class="chip amber">Only ' + num(pr.stock) + ' pcs in stock</span> ' : '') + '<b class="num">' + money(q * r) + '</b> <span class="muted">' + num(q) + ' pcs × ' + money(r) + (cp ? ' · ' + (q / cp).toFixed(2) + ' cases' : '') + '</span>';
   if (r < Number(l.retail) - 0.0001) t += ' <span class="chip amber">Below standard ' + money(l.retail) + '</span>';
   else if (r > Number(l.retail) + 0.0001) t += ' <span class="chip green">Above standard</span>';
   return t;
@@ -1454,7 +1462,8 @@ VIEWS.control = function (p) {
   call('listOrders', { stage: stage }).then(function (res) {
     var act1 = { SUPPLY: ['Confirm supply', 'supply'], DISPATCH: ['Dispatch', 'dispatch'], DELIVERY: ['Record delivery', 'deliveryForm'], POD: ['Upload POD', 'pod'], INVOICE: ['Raise invoice', 'invoice'] }[stage];
     var html = head('Order control', hint + ' · ' + companyLine(), stage === 'DISPATCH' && res.rows.length && can('dispatch.create') ? '<button class="btn sm" onclick="go(\'dispatch\')">Dispatch several</button>' : '') + tabs;
-    html += '<div class="section">' + (res.rows.length ? '<div class="rows">' + res.rows.map(function (o) {
+    var bulk = stage === 'INVOICE' && can('invoice.create') && res.rows.length > 1;
+    html += '<div class="section">' + (bulk ? '<div class="note" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ivAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.ivSel\').forEach(function(c){c.checked=this.checked}.bind(this));bulkCount()"> Select all</label><span id="ivN" class="muted small"></span><label style="display:flex;gap:6px;align-items:center;margin-left:auto">Invoice date <input type="date" id="bulkDate" max="' + today() + '" value="' + today() + '" style="min-height:36px"></label><button class="btn" id="bulkBtn" onclick="bulkInvoice(this)">Raise invoices for selected</button></div><div class="small muted" id="bulkProg" style="margin-bottom:8px"></div>' : '') + (res.rows.length ? '<div class="rows">' + res.rows.map(function (o) {
       var btn = '';
       if (act1) {
         var on = act1[1] === 'supply' ? "go('supply',{id:" + js(o.order_id) + "})" : act1[1] === 'dispatch' ? "go('dispatch',{ids:[" + js(o.order_id) + "]})" : act1[1] === 'deliveryForm' ? "go('deliveryForm',{dispatch_id:" + js(o.dispatch_id) + "})" :
@@ -1462,11 +1471,37 @@ VIEWS.control = function (p) {
         var allowed = { supply: can('supply.confirm'), dispatch: can('dispatch.create'), deliveryForm: can('delivery.complete'), pod: can('pod.upload'), invoice: can('invoice.create') }[act1[1]];
         if (allowed) btn = '<button class="btn sm" onclick="event.stopPropagation();' + on.replace(/"/g, '&quot;') + '">' + act1[0] + '</button>';
       }
-      return '<div class="row" onclick="go(\'orderDetail\',{id:' + js(o.order_id) + '})"><div class="m"><b>' + esc(o.customer_name) + '</b><span>' + esc([fdate(o.order_date_key), o.salesman_name, o.beat_name, o.requested_delivery_date ? 'delivery ' + fdate(o.requested_delivery_date) : ''].filter(Boolean).join(' · ')) + '</span>' + miniRoute(o) + '</div><div class="r"><b>' + money(o.supplied_value || o.order_value) + '</b>' + (btn || chip(o.status, o.status_label)) + '</div></div>';
+      return '<div class="row" onclick="go(\'orderDetail\',{id:' + js(o.order_id) + '})">' + (bulk ? '<input type="checkbox" class="ivSel" value="' + attr(o.order_id) + '" onclick="event.stopPropagation();bulkCount()" style="width:20px;height:20px;min-height:0;flex:none;margin-right:8px">' : '') + '<div class="m"><b>' + esc(o.customer_name) + '</b><span>' + esc([fdate(o.order_date_key), o.salesman_name, o.beat_name, o.requested_delivery_date ? 'delivery ' + fdate(o.requested_delivery_date) : ''].filter(Boolean).join(' · ')) + '</span>' + miniRoute(o) + '</div><div class="r"><b>' + money(o.supplied_value || o.order_value) + '</b>' + (btn || chip(o.status, o.status_label)) + '</div></div>';
     }).join('') + '</div>' : emptyState('Nothing in this stage', 'All caught up.')) + '</div>';
     setMain(html);
   }, failed);
 };
+function bulkCount() { var n = document.querySelectorAll('.ivSel:checked').length; if ($('ivN')) $('ivN').textContent = n ? n + ' selected' : ''; }
+function bulkInvoice(btn) {
+  var ids = Array.prototype.map.call(document.querySelectorAll('.ivSel:checked'), function (c) { return c.value; }), date = val('bulkDate');
+  if (!ids.length) return toast('Tick the orders first (or "Select all").', 'bad');
+  if (!confirm('Raise ' + ids.length + ' invoice' + (ids.length === 1 ? '' : 's') + ' dated ' + fdate(date) + '?\nEach order gets its own invoice number.')) return;
+  var done = [], failed = [], chunks = [];
+  for (var i = 0; i < ids.length; i += 15) chunks.push(ids.slice(i, i + 15));
+  act(btn, 'Raising…', function () {
+    var p = Promise.resolve(), stop = false;
+    chunks.forEach(function (ch, k) {
+      p = p.then(function () {
+        if (stop) { ch.forEach(function (id) { failed.push({ order_id: id, customer_name: '', error: 'Not attempted – the connection was interrupted. Check the Invoices list, then raise these again.' }); }); return; }
+        if ($('bulkProg')) $('bulkProg').textContent = 'Raising ' + Math.min((k + 1) * 15, ids.length) + ' of ' + ids.length + '…';
+        return call('createInvoicesBulk', { order_ids: ch, invoice_date: date }).then(function (r) { done = done.concat(r.done); failed = failed.concat(r.failed); }, function (e) {
+          stop = true; ch.forEach(function (id) { failed.push({ order_id: id, customer_name: '', error: 'Not confirmed (' + (e && e.message || 'connection error') + '). Check the Invoices list before raising again.' }); });
+        });
+      });
+    });
+    return p.then(function () { return { message: '✓ ' + done.length + ' invoice(s) raised' + (failed.length ? ', ' + failed.length + ' not raised' : '') + '.' }; });
+  }).then(function () {
+    var html = (done.length ? '<div class="note good" style="margin-bottom:10px"><b>' + done.length + ' invoice' + (done.length === 1 ? '' : 's') + ' raised</b> · ' + money0(done.reduce(function (a, x) { return a + x.invoice_value; }, 0)) + '<div class="small" style="margin-top:4px;max-height:130px;overflow:auto">' + done.map(function (x) { return esc(x.invoice_number) + ' · ' + esc(x.customer_name) + ' · ' + money(x.invoice_value); }).join('<br>') + '</div></div>' : '') +
+      (failed.length ? '<div class="note bad" style="margin-bottom:10px"><b>' + failed.length + ' not raised</b><div class="small" style="margin-top:4px;max-height:130px;overflow:auto">' + failed.map(function (x) { return esc(x.customer_name || x.order_id) + ' – ' + esc(x.error); }).join('<br>') + '</div></div>' : '');
+    refresh();
+    if (done.length) printBatchModal(done.map(function (x) { return x.invoice_id; }), html); else openModal('<h3>Invoices</h3>' + html + '<div class="actions end"><button class="btn" onclick="closeModal()">Close</button></div>');
+  }, swallow);
+}
 function closeExceptionUi(id) { askReason('Resolve exception', null, { textLabel: 'What was done', okLabel: 'Mark resolved' }).then(function (r) { act(null, '', function () { return call('closeException', id, r.reason); }).then(refresh, swallow); }); }
 
 /* =========================== COLLECTIONS =========================== */
@@ -2164,15 +2199,15 @@ VIEWS.billing = function (p) {
   var tabs = [['invoices', 'Invoices'], ['credit', 'Credit notes'], ['debit', 'Debit notes'], ['drafts', 'Drafts']];
   var tabHtml = '<div class="tabs">' + tabs.map(function (t) { return '<button class="' + (t[0] === p.tab ? 'on' : '') + '" onclick="go(\'billing\',{tab:\'' + t[0] + '\'},{replace:true})">' + t[1] + '</button>'; }).join('') + '</div>';
   var dates = '<div class="filters" id="blF"><label class="field"><span>From</span><input type="date" name="from" value="' + attr(p.from) + '"></label><label class="field"><span>To</span><input type="date" name="to" value="' + attr(p.to) + '"></label><label class="field"><span>Search</span><input name="q" value="' + attr(p.q || '') + '" placeholder="Number, outlet"></label><div class="actions" style="align-items:flex-end"><button class="btn" onclick="var v=formVals(\'blF\');v.tab=' + js(p.tab).replace(/"/g, '&quot;') + ';go(\'billing\',v,{replace:true})">Apply</button></div></div>';
-  var top = '<div class="actions" style="margin-bottom:12px">' + (can('outlet.report') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="routeSheet(this)">Route sheet (Excel) for selected</button>' : '') + (can('invoice.create') ? '<button class="btn" onclick="go(\'control\',{stage:\'INVOICE\'})">Orders to invoice</button>' : '') + '</div>';
+  var top = '<div class="actions" style="margin-bottom:12px">' + (can('invoice.print') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="printSelectedInvoices()">Print selected</button>' : '') + (can('outlet.report') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="routeSheet(this)">Route sheet (Excel) for selected</button>' : '') + (can('invoice.create') ? '<button class="btn" onclick="go(\'control\',{stage:\'INVOICE\'})">Orders to invoice</button>' : '') + '</div>';
   if (p.tab === 'invoices') {
     call('listInvoices', { status: 'ALL', from: p.from, to: p.to, q: p.q || '' }).then(function (r) {
       var rows = r.rows.slice().sort(function (a, b) { return String(b.invoice_number).localeCompare(String(a.invoice_number)); });
       var live = rows.filter(function (x) { return x.status !== 'CANCELLED'; });
       setMain(head('Invoices & notes', companyLine()) + top + tabHtml + dates +
         '<div class="kpis">' + kpi('Invoices', num(live.length), money0(live.reduce(function (a, x) { return a + x.invoice_value; }, 0)), 'sales') + kpi('Taxable', money0(live.reduce(function (a, x) { return a + x.taxable_value; }, 0)), '') + kpi('GST', money0(live.reduce(function (a, x) { return a + x.gst; }, 0)), '') + kpi('Cancelled', num(rows.length - live.length), '', rows.length - live.length ? 'warn' : '') + '</div>' +
-        '<div class="section">' + (rows.length && can('outlet.report') ? '<label class="chk" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="invAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.invSel\').forEach(function(c){c.checked=this.checked}.bind(this));invSelCount()"> Select all <span class="muted small" id="invSelN"></span></label>' : '') + (rows.length ? '<div class="rows">' + rows.map(function (i) {
-          return '<div class="row static">' + (can('outlet.report') && i.status !== 'CANCELLED' ? '<input type="checkbox" class="invSel" value="' + attr(i.invoice_id) + '" onchange="invSelCount()" style="width:20px;height:20px;min-height:0;flex:none;margin-right:8px">' : '') + '<div class="m"><b>' + esc(i.invoice_number) + ' · ' + esc(i.customer_name) + '</b><span>' + fdate(i.invoice_date) + (i.gst_invoice ? ' · taxable ' + money(i.taxable_value) + ' + GST ' + money(i.gst) : ' · Marg / earlier invoice') + ' · ' + esc(i.salesman_name) + '</span>' +
+        '<div class="section">' + (rows.length && (can('outlet.report') || can('invoice.print')) ? '<label class="chk" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="invAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.invSel\').forEach(function(c){c.checked=this.checked}.bind(this));invSelCount()"> Select all <span class="muted small" id="invSelN"></span></label>' : '') + (rows.length ? '<div class="rows">' + rows.map(function (i) {
+          return '<div class="row static">' + ((can('outlet.report') || can('invoice.print')) && i.status !== 'CANCELLED' ? '<input type="checkbox" class="invSel" value="' + attr(i.invoice_id) + '" onchange="invSelCount()" style="width:20px;height:20px;min-height:0;flex:none;margin-right:8px">' : '') + '<div class="m"><b>' + esc(i.invoice_number) + ' · ' + esc(i.customer_name) + '</b><span>' + fdate(i.invoice_date) + (i.gst_invoice ? ' · taxable ' + money(i.taxable_value) + ' + GST ' + money(i.gst) : ' · Marg / earlier invoice') + ' · ' + esc(i.salesman_name) + '</span>' +
             (i.credited || i.debited ? '<span class="tiny">credit notes ' + money(i.credited) + ' · debit notes ' + money(i.debited) + '</span>' : '') + '</div><div class="r"><b>' + money(i.invoice_value) + '</b>' + chip(i.status) +
             '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (i.gst_invoice && i.status !== 'CANCELLED' ? '<button class="btn sm ghost" onclick="printDoc(\'INV\',' + js(i.invoice_id) + ')">Print</button>' : '') +
             (i.gst_invoice && i.status !== 'CANCELLED' && can('note.create') ? '<button class="btn sm ghost" onclick="go(\'noteForm\',{invoice_id:' + js(i.invoice_id) + ',type:\'CREDIT\'})">Credit</button><button class="btn sm ghost" onclick="go(\'noteForm\',{invoice_id:' + js(i.invoice_id) + ',type:\'DEBIT\'})">Debit</button>' : '') +
@@ -2193,7 +2228,49 @@ VIEWS.billing = function (p) {
   }, failed);
 };
 
-/* --------------- V7.8 route-planning sheet (Excel) from selected invoices --------------- */
+/* --------------- V8.0 print many invoices at once --------------- */
+function printBatchModal(ids, intro) {
+  openModal('<h3>Print ' + ids.length + ' invoice' + (ids.length === 1 ? '' : 's') + '</h3>' + (intro || '') +
+    '<div class="form"><label class="field"><span>Layout</span><select id="pbMode"><option value="AUTO">As per customer (registered → GST full page, others → half page)</option><option value="RETAIL">Half-page invoice for all</option><option value="GST">GST full-page invoice for all</option></select></label>' +
+    '<label class="field"><span>Half-page invoices</span><select id="pbPer"><option value="2">2 on one A4 sheet (cut in half after printing)</option><option value="1">1 per page</option></select></label>' +
+    '<div class="small muted" id="pbProg"></div><div class="actions end"><button class="btn ghost" onclick="closeModal()">Close</button><button class="btn" id="pbGo">Print all</button></div></div>');
+  $('pbGo').onclick = function () { act(this, 'Preparing…', function () { return printInvoicesBatch(ids, val('pbMode'), Number(val('pbPer')) || 2); }).then(function () {}, swallow); };
+}
+function printInvoicesBatch(ids, mode, per) {
+  var items = [], css = '', chunks = [];
+  for (var i = 0; i < ids.length; i += 15) chunks.push(ids.slice(i, i + 15));
+  var p = Promise.resolve();
+  chunks.forEach(function (ch, k) {
+    p = p.then(function () { if ($('pbProg')) $('pbProg').textContent = 'Preparing ' + Math.min((k + 1) * 15, ids.length) + ' of ' + ids.length + '…'; return call('getInvoicesPrintBatch', ch, mode).then(function (r) { css = r.css; items = items.concat(r.items); }); });
+  });
+  return p.then(function () {
+    var pages = [], pend = [], half = per === 2;
+    var flush = function () { if (pend.length) { pages.push({ half: true, list: pend }); pend = []; } };
+    items.forEach(function (it) {
+      it.pages.forEach(function (h) {
+        h = h.replace(/ pgb"/g, '"');
+        if (it.mode === 'RETAIL') { pend.push(h); if (pend.length >= (half ? 2 : 1)) flush(); }
+        else { flush(); pages.push({ half: false, list: [h] }); }
+      });
+    });
+    flush();
+    if ($('pbProg')) $('pbProg').textContent = '';
+    $('printArea').innerHTML = css + pages.map(function (pg) { return '<div class="ivpg">' + pg.list.map(function (h) { return pg.half && half ? '<div class="ivhalf">' + h + '</div>' : h; }).join('') + '</div>'; }).join('');
+    $('pageStyle').textContent = '@page { size: A4 portrait; margin: 8mm; }';
+    var old = document.title; document.title = 'Invoices ' + today() + ' (' + items.length + ')';
+    var back = function () { document.title = old; window.removeEventListener('afterprint', back); };
+    window.addEventListener('afterprint', back);
+    setTimeout(function () { window.print(); }, 150);
+    return { message: '✓ ' + items.length + ' invoice(s) ready – choose Save as PDF or your printer.' };
+  });
+}
+function printSelectedInvoices() {
+  var ids = Array.prototype.map.call(document.querySelectorAll('.invSel:checked'), function (c) { return c.value; });
+  if (!ids.length) return toast('Tick the invoices first (or "Select all").', 'bad');
+  printBatchModal(ids);
+}
+
+/* --------------- V8.0 route-planning sheet (Excel) from selected invoices --------------- */
 function invSelCount() { var n = document.querySelectorAll('.invSel:checked').length; if ($('invSelN')) $('invSelN').textContent = n ? '(' + n + ' selected)' : ''; }
 function routeSheet(btn) {
   var ids = Array.prototype.map.call(document.querySelectorAll('.invSel:checked'), function (c) { return c.value; });
@@ -2321,7 +2398,7 @@ function printDoc(type, id, mode) {
     document.querySelectorAll('#pvMode button').forEach(function (b) { b.onclick = function () { st.mode = b.getAttribute('data-m'); render(); }; });
     if ($('pvEwSave')) $('pvEwSave').onclick = function () { act(this, 'Saving…', function () { return call('saveEwayBill', id, $('pvEw').value, $('pvEwD').value); }).then(function () { closeModal(); printDoc(type, id, st.mode); }, swallow); };
     if ($('pvLedger')) $('pvLedger').onchange = function () { st.ledger = this.checked; render(); };
-    $('pvPrint').onclick = function () { render(); window.print(); };
+    $('pvPrint').onclick = function () { render(); var old = document.title; document.title = d.file_name || d.number; var back = function () { document.title = old; window.removeEventListener('afterprint', back); }; window.addEventListener('afterprint', back); window.print(); setTimeout(back, 60000); };
     render();
     if ($('pdfDrive')) $('pdfDrive').onclick = function () { act(this, 'Saving…', function () { return call('saveDocumentPdf', type, id, st.mode); }).then(function (r) { if (r && r.url) window.open(r.url, '_blank'); }, swallow); };
   }, showErr);
@@ -2360,12 +2437,19 @@ VIEWS.stock = function (p) {
     }, failed);
     return;
   }
-  call('getPurchaseFormData').then(function (d) {
-    var started = {}; Object.keys(d.on_hand).forEach(function (k) { started[k] = true; });
-    setMain(head('Stock & purchases', companyLine(), right) + tabHtml + '<div class="note small" style="margin-bottom:12px">Enter the physical stock on the day you start using the app. Each product can have opening stock once; later corrections are stock adjustments (audited).</div>' +
+  Promise.all([call('getPurchaseFormData'), call('getOpeningStockRows')]).then(function (rr) {
+    var d = rr[0], started = {}; rr[1].forEach(function (r) { started[r.sku_id] = true; });
+    setMain(head('Stock & purchases', companyLine(), right) + tabHtml + '<div class="note small" style="margin-bottom:12px">Enter the physical stock on the day you start using the app. Each product can have opening stock once; to correct it use <b>Edit opening stock</b> below (audited).</div>' +
       '<div class="section"><label class="field" style="max-width:240px"><span>Opening stock date</span><input type="date" id="opDate" max="' + today() + '" value="' + today() + '"></label><div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><tr><th>Product</th><th class="n">Saleable pcs</th><th class="n">Damaged pcs</th><th class="n">Unit cost ₹ (excl. GST)</th></tr>' +
-      d.products.map(function (pr) { return started[pr.sku_id] ? '<tr><td>' + esc(pr.label) + '</td><td colspan="3" class="muted">Already started – ' + num(d.on_hand[pr.sku_id].SALEABLE) + ' pcs in stock</td></tr>' : '<tr><td>' + esc(pr.label) + '</td><td class="n"><input type="number" min="0" step="1" class="opQ" data-sku="' + attr(pr.sku_id) + '"></td><td class="n"><input type="number" min="0" step="1" class="opD" data-sku="' + attr(pr.sku_id) + '"></td><td class="n"><input type="number" min="0" step="0.01" class="opC" data-sku="' + attr(pr.sku_id) + '" value="' + attr(pr.distributor_price || '') + '"></td></tr>'; }).join('') +
-      '</table></div><div class="actions" style="margin-top:12px"><button class="btn" onclick="saveOpening(this)">Save opening stock</button></div></div>');
+      d.products.map(function (pr) { return started[pr.sku_id] ? '<tr><td>' + esc(pr.label) + '</td><td colspan="3" class="muted">Opening stock entered – change it in “Edit opening stock” below</td></tr>' : '<tr><td>' + esc(pr.label) + '</td><td class="n"><input type="number" min="0" step="1" class="opQ" data-sku="' + attr(pr.sku_id) + '"></td><td class="n"><input type="number" min="0" step="1" class="opD" data-sku="' + attr(pr.sku_id) + '"></td><td class="n"><input type="number" min="0" step="0.01" class="opC" data-sku="' + attr(pr.sku_id) + '" value="' + attr(pr.distributor_price || '') + '"></td></tr>'; }).join('') +
+      '</table></div><div class="actions" style="margin-top:12px"><button class="btn" onclick="saveOpening(this)">Save opening stock</button></div></div><div id="opEdit"></div>');
+    (function (rs) {
+      if (!rs.length) return;
+      $('opEdit').innerHTML = '<div class="section"><h3>Edit opening stock</h3><div class="note small" style="margin-bottom:10px">Change the opening quantity or the unit cost (price excluding GST). The old figures are kept in the audit log. Stock on hand moves by the difference.</div>' +
+        '<label class="field" style="max-width:240px"><span>Opening stock date (leave to keep)</span><input type="date" id="oeDate" max="' + today() + '"></label><div class="tbl-wrap" style="margin-top:10px"><table class="tbl"><tr><th>Product</th><th class="n">Saleable pcs</th><th class="n">Damaged pcs</th><th class="n">Unit cost ₹ (excl. GST)</th><th class="n">On hand now</th></tr>' +
+        rs.map(function (r) { return '<tr><td>' + esc(r.label) + '<div class="tiny muted">opened ' + fdate(r.entry_date) + '</div></td><td class="n"><input type="number" min="0" step="1" class="oeQ" data-sku="' + attr(r.sku_id) + '" value="' + attr(r.qty) + '"></td><td class="n"><input type="number" min="0" step="1" class="oeD" data-sku="' + attr(r.sku_id) + '" value="' + attr(r.damaged_qty) + '"></td><td class="n"><input type="number" min="0" step="0.01" class="oeC" data-sku="' + attr(r.sku_id) + '" value="' + attr(r.unit_cost || '') + '"></td><td class="n">' + num(r.on_hand) + '</td></tr>'; }).join('') +
+        '</table></div><label class="field" style="margin-top:10px"><span>Reason for the change <em>*</em></span><input id="oeWhy" placeholder="e.g. counted wrongly on day one"></label><div class="actions" style="margin-top:12px"><button class="btn" onclick="saveOpeningEdit(this)">Save changes</button></div></div>';
+    })(rr[1]);
   }, failed);
 };
 function filterStock() {
@@ -2385,6 +2469,11 @@ function saveOpening(btn) {
   var rows = [];
   document.querySelectorAll('.opQ').forEach(function (i) { var sku = i.dataset.sku, d = document.querySelector('.opD[data-sku="' + sku + '"]'), c = document.querySelector('.opC[data-sku="' + sku + '"]'); if (Number(i.value) || Number(d.value)) rows.push({ sku_id: sku, qty: Number(i.value) || 0, damaged_qty: Number(d.value) || 0, unit_cost: Number(c.value) || 0 }); });
   act(btn, 'Saving…', function () { return call('saveOpeningStock', val('opDate'), rows); }).then(function () { go('stock', { tab: 'summary' }, { replace: true }); }, swallow);
+}
+function saveOpeningEdit(btn) {
+  var rows = [];
+  document.querySelectorAll('.oeQ').forEach(function (i) { var sku = i.dataset.sku, d = document.querySelector('.oeD[data-sku="' + sku + '"]'), c = document.querySelector('.oeC[data-sku="' + sku + '"]'); rows.push({ sku_id: sku, qty: Number(i.value) || 0, damaged_qty: Number(d.value) || 0, unit_cost: c.value === '' ? '' : Number(c.value) }); });
+  act(btn, 'Saving…', function () { return call('editOpeningStock', val('oeDate'), rows, val('oeWhy')); }).then(function () { go('stock', { tab: 'summary' }, { replace: true }); }, swallow);
 }
 function openAdjust(sku) {
   call('listProducts', false).then(function (ps) {
