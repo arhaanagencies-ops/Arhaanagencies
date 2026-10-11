@@ -503,6 +503,25 @@ function toast(msg, type) {
   toastTimer = setTimeout(function () { t.className = 'toast'; }, 5000);
 }
 function showErr(e) { toast((e && e.message) || String(e), 'bad'); }
+
+/* V8.0 – open POD / proof / bill files inside the app (no Google Drive access needed) */
+function viewFile(url, title) {
+  toast('Opening file…');
+  call('getProofFile', url).then(function (r) {
+    var isImg = /^data:image\//.test(r.data_url), isPdf = /^data:application\/pdf/.test(r.data_url);
+    var body = isImg ? '<img alt="" src="' + attr(r.data_url) + '" style="max-width:100%;max-height:70vh;border-radius:8px;display:block;margin:0 auto">'
+      : isPdf ? '<iframe src="' + attr(r.data_url) + '" style="width:100%;height:70vh;border:0"></iframe>'
+      : '<p class="note">This file type cannot be previewed.</p>';
+    openModal('<h3>' + esc(title || r.name || 'File') + '</h3>' + body + '<div class="actions end" style="margin-top:10px"><a class="btn ghost" download="' + attr(r.name || 'file') + '" href="' + attr(r.data_url) + '">Download</a><button class="btn" onclick="closeModal()">Close</button></div>');
+  }, showErr);
+}
+document.addEventListener('click', function (ev) {
+  var a = ev.target && ev.target.closest ? ev.target.closest('a[href*="drive.google.com"]') : null;
+  if (!a || a.hasAttribute('data-ext')) return;
+  var t = (a.textContent || '').trim();
+  if (/^(Open in Drive|Open)$/i.test(t) && /\/(folders)\//.test(a.href)) return;
+  ev.preventDefault(); viewFile(a.href, t === 'View' ? 'POD' : t);
+}, true);
 function swallow() {}
 
 /* --------------------------- FILES --------------------------- */
@@ -769,7 +788,7 @@ function kpi(label, value, sub, tone, onclick) {
 }
 function emptyState(title, text, btn) { return '<div class="empty"><b>' + esc(title) + '</b>' + (text ? esc(text) : '') + (btn ? '<div style="margin-top:12px">' + btn + '</div>' : '') + '</div>'; }
 function searchBox(id, placeholder, oninput) { return '<div class="search">' + icon('search') + '<input id="' + id + '" type="search" placeholder="' + attr(placeholder) + '" oninput="' + oninput + '"></div>'; }
-function companyLine() { var c = S.boot.company; return !c ? '' : (c.all ? 'Showing: <b>All companies</b> (read-only)' : 'Current company: <b>' + esc(c.company_name) + '</b>'); }
+function companyLine() { var c = S.boot.company; return !c ? '' : (c.all ? '<b>All companies</b> (read-only)' : '<b>' + esc(String(c.company_name || '').split(/\s+/)[0]) + '</b>'); }
 
 /* ------------------------------ PROFILE / NOTIFICATIONS ------------------------------ */
 VIEWS.profile = function (p) {
@@ -791,9 +810,18 @@ VIEWS.profile = function (p) {
 function savePassword(btn) {
   var v = formVals('pwForm');
   if (v.nw !== v.nw2) return toast('The new passwords do not match.', 'bad');
+  var uid = S.boot.user.user_id;
   act(btn, 'Saving…', function () { return call('changeMyPassword', v.cur, v.nw); }).then(function () {
     S.boot.user.must_change_password = false; go('home', {}, { reset: true });
-  }, swallow);
+  }, function (e) {
+    // V8.0 the answer may have been lost on a weak connection although the password was saved: check by signing in with the new password
+    if (!/dropped|may or may not|reach the server|busy/i.test(String(e && e.message))) return;
+    toast('Checking whether the new password was saved…');
+    google.script.run.withSuccessHandler(function (r) {
+      storeToken(r.token); toast('✓ Password changed.', 'good');
+      startApp(false);
+    }).withFailureHandler(function () { toast('The password was not changed – please try again.', 'bad'); }).loginAppUser(uid, v.nw);
+  });
 }
 function saveProfile(btn) {
   var v = formVals('pfForm');
@@ -1244,7 +1272,7 @@ VIEWS.orderDetail = function (p) {
     if (a.print) btns.push('<button class="btn ghost" onclick="printDoc(\'INV\',' + js(inv.invoice_id) + ')">Print invoice</button>');
     if (a.credit_note) btns.push('<button class="btn ghost" onclick="go(\'noteForm\',{invoice_id:' + js(inv.invoice_id) + ',type:\'CREDIT\'})">Credit note</button>');
     if (a.dispatch) btns.push('<button class="btn" onclick="go(\'dispatch\',{ids:[' + js(o.order_id) + ']})">Dispatch</button>');
-    if (a.deliver && o.dispatch_id) btns.push('<button class="btn" onclick="go(\'deliveryForm\',{dispatch_id:' + js(o.dispatch_id) + '})">Record delivery</button>');
+    if (a.deliver && o.dispatch_id) btns.push('<button class="btn" onclick="go(\'deliveryStop\',{dispatch_id:' + js(o.dispatch_id) + '})">Record delivery</button>');
     if (a.pod) btns.push('<button class="btn" onclick="openPodUpload(' + js(o.delivery_id) + ',' + js(o.order_id) + ')">Upload POD</button>');
     if (a.edit) btns.push('<button class="btn ghost" onclick="go(\'order\',{edit:' + js(o.order_id) + '})">Edit order</button>');
     if (a.cancel) btns.push('<button class="btn danger" onclick="cancelOrderUi(' + js(o.order_id) + ')">Cancel order</button>');
@@ -1343,7 +1371,7 @@ function saveDispatch(btn) {
   var ids = [].slice.call(document.querySelectorAll('#dOrders input:checked')).map(function (i) { return i.value; });
   if (!ids.length) return toast('Tick at least one order.', 'bad');
   var v = formVals('dForm'); v.order_ids = ids;
-  act(btn, 'Dispatching…', function () { return call('createDispatch', v); }).then(function () { go('control', { stage: 'DELIVERY' }, { replace: true }); }, swallow);
+  act(btn, 'Dispatching…', function () { return call('createDispatch', v); }).then(function () { go('control', { stage: 'DELIVERY' }, { replace: true }); }, function () { setTimeout(function () { if (S.view === 'dispatch') go('dispatch', {}, { replace: true }); }, 2500); });
 }
 
 /* =========================== DELIVERIES =========================== */
@@ -1366,10 +1394,46 @@ function downloadDispatchSheet(btn) {
 function deliveryRows(rows) {
   if (!rows.length) return emptyState('Nothing here', '');
   return '<div class="rows">' + rows.map(function (r) {
-    var action = r.stage === 'TO_DELIVER' ? '<button class="btn sm" onclick="event.stopPropagation();go(\'deliveryForm\',{dispatch_id:' + js(r.dispatch_id) + '})">Deliver</button>' : '<button class="btn sm" onclick="event.stopPropagation();openPodUpload(' + js(r.delivery_id) + ',' + js(r.order_id) + ')">Upload POD</button>';
+    var action = r.stage === 'TO_DELIVER' ? '<button class="btn sm" onclick="event.stopPropagation();go(\'deliveryStop\',{dispatch_id:' + js(r.dispatch_id) + '})">Deliver</button>' : '<button class="btn sm" onclick="event.stopPropagation();openPodUpload(' + js(r.delivery_id) + ',' + js(r.order_id) + ')">Upload POD</button>';
     return '<div class="row static"><div class="m"><b>' + esc(r.customer_name) + '</b><span>' + esc(r.address) + '</span><span class="tiny">' + esc([fdate(r.expected_delivery_date), r.vehicle, r.route, money0(r.dispatch_value)].filter(Boolean).join(' · ')) +
       (r.mobile ? ' · <a href="tel:' + attr(r.mobile) + '">Call</a>' : '') + (r.maps ? ' · <a target="_blank" href="' + attr(r.maps) + '">Map</a>' : '') + '</span></div><div class="r">' + action + '</div></div>';
   }).join('') + '</div>';
+}
+VIEWS.deliveryStop = function (p) {
+  call('getMyDeliveries').then(function (d) {
+    var j = d.rows.filter(function (r) { return r.dispatch_id === p.dispatch_id; })[0];
+    if (!j) return setMain(head('Delivery') + '<div class="note bad">This delivery is no longer pending or is not assigned to you.</div>');
+    S.cache.stop = j;
+    var html = head(j.customer_name, esc(j.order_id) + ' · ' + money0(j.dispatch_value));
+    html += '<div class="section"><div class="rows"><div class="row static"><div class="m"><b>' + esc(j.customer_name) + '</b>' +
+      (j.contact_person ? '<span>Contact: ' + esc(j.contact_person) + '</span>' : '<span class="muted">No contact person saved</span>') +
+      '<span>' + (j.address ? esc(j.address) : '<span class="muted">No address saved</span>') + (j.pin ? ' – ' + esc(j.pin) : '') + '</span>' +
+      '<span class="tiny">' + (j.mobile ? 'Mobile <a href="tel:' + attr(j.mobile) + '">' + esc(j.mobile) + '</a>' : '') + (j.alt_mobile ? ' · Alt <a href="tel:' + attr(j.alt_mobile) + '">' + esc(j.alt_mobile) + '</a>' : '') + '</span></div></div></div>' +
+      '<div class="actions" style="margin-top:10px">' + (j.maps ? '<a class="btn" data-ext="1" style="flex:1" target="_blank" rel="noopener" href="' + attr(j.maps) + '">📍 Open in Google Maps</a>' : '') +
+      (j.mobile ? '<a class="btn ghost" href="tel:' + attr(j.mobile) + '">📞 Call</a>' : '') + '</div>' +
+      '<div class="small muted" style="margin-top:6px">' + (j.has_pin || j.maps_saved ? 'Using the saved location of this outlet.' : 'No exact location saved – Maps will search by name and address. Use “Save my location here” once you reach the shop.') + '</div></div>';
+    html += '<div class="section"><div class="section-head"><h3>Update outlet details</h3><span class="muted small">Keeps our records accurate</span></div><div class="form" id="stF">' +
+      '<div class="grid2"><label class="field"><span>Contact person</span><input id="stCp" value="' + attr(j.contact_person) + '"></label><label class="field"><span>Mobile <em>*</em></span><input id="stMo" inputmode="tel" maxlength="10" value="' + attr(j.mobile) + '"></label></div>' +
+      '<div class="grid2"><label class="field"><span>Alternate mobile</span><input id="stAm" inputmode="tel" maxlength="10" value="' + attr(j.alt_mobile) + '"></label><label class="field"><span>PIN code</span><input id="stPin" inputmode="numeric" maxlength="6" value="' + attr(j.pin) + '"></label></div>' +
+      '<label class="field"><span>Address</span><input id="stAd" value="' + attr(j.street) + '"></label><label class="field"><span>Area</span><input id="stAr" value="' + attr(j.area) + '"></label>' +
+      '<label class="field"><span>Google Maps link (optional)</span><input id="stMl" value="' + attr(j.maps_saved) + '" placeholder="Paste a shared map link"></label>' +
+      '<div class="actions"><button class="btn ghost" onclick="saveStopLocation(this)">📍 Save my location here</button><button class="btn" style="flex:1" onclick="saveStopDetails(this)">Save details</button></div></div></div>';
+    html += '<div class="sticky-actions"><button class="btn ghost" onclick="back()">Back</button><button class="btn" style="flex:1" onclick="go(\'deliveryForm\',{dispatch_id:' + js(j.dispatch_id) + '})">Start delivery →</button></div>';
+    setMain(html);
+  }, failed);
+};
+function saveStopDetails(btn) {
+  var j = S.cache.stop;
+  act(btn, 'Saving…', function () { return call('updateOutletFromDelivery', j.dispatch_id, { contact_person: val('stCp'), mobile: val('stMo'), alternate_mobile: val('stAm'), pin: val('stPin'), address: val('stAd'), area: val('stAr'), google_maps_link: val('stMl') }); })
+    .then(function () { go('deliveryStop', { dispatch_id: j.dispatch_id }, { replace: true }); }, swallow);
+}
+function saveStopLocation(btn) {
+  var j = S.cache.stop;
+  if (!navigator.geolocation) return toast('This phone cannot share its location.', 'bad');
+  act(btn, 'Getting location…', function () {
+    return new Promise(function (res, rej) { navigator.geolocation.getCurrentPosition(res, function () { rej(new Error('Could not get your location. Allow location access and try again.')); }, { enableHighAccuracy: true, timeout: 15000 }); })
+      .then(function (pos) { return call('updateOutletFromDelivery', j.dispatch_id, { latitude: pos.coords.latitude, longitude: pos.coords.longitude }); });
+  }).then(function () { go('deliveryStop', { dispatch_id: j.dispatch_id }, { replace: true }); }, swallow);
 }
 VIEWS.deliveryForm = function (p) {
   call('getMyDeliveries').then(function (d) {
@@ -1460,15 +1524,15 @@ VIEWS.control = function (p) {
     }, failed);
   }
   call('listOrders', { stage: stage }).then(function (res) {
-    var act1 = { SUPPLY: ['Confirm supply', 'supply'], DISPATCH: ['Dispatch', 'dispatch'], DELIVERY: ['Record delivery', 'deliveryForm'], POD: ['Upload POD', 'pod'], INVOICE: ['Raise invoice', 'invoice'] }[stage];
+    var act1 = { SUPPLY: ['Confirm supply', 'supply'], DISPATCH: ['Dispatch', 'dispatch'], DELIVERY: ['Record delivery', 'deliveryStop'], POD: ['Upload POD', 'pod'], INVOICE: ['Raise invoice', 'invoice'] }[stage];
     var html = head('Order control', hint + ' · ' + companyLine(), stage === 'DISPATCH' && res.rows.length && can('dispatch.create') ? '<button class="btn sm" onclick="go(\'dispatch\')">Dispatch several</button>' : '') + tabs;
     var bulk = stage === 'INVOICE' && can('invoice.create') && res.rows.length > 1;
     html += '<div class="section">' + (bulk ? '<div class="note" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ivAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.ivSel\').forEach(function(c){c.checked=this.checked}.bind(this));bulkCount()"> Select all</label><span id="ivN" class="muted small"></span><label style="display:flex;gap:6px;align-items:center;margin-left:auto">Invoice date <input type="date" id="bulkDate" max="' + today() + '" value="' + today() + '" style="min-height:36px"></label><button class="btn" id="bulkBtn" onclick="bulkInvoice(this)">Raise invoices for selected</button></div><div class="small muted" id="bulkProg" style="margin-bottom:8px"></div>' : '') + (res.rows.length ? '<div class="rows">' + res.rows.map(function (o) {
       var btn = '';
       if (act1) {
-        var on = act1[1] === 'supply' ? "go('supply',{id:" + js(o.order_id) + "})" : act1[1] === 'dispatch' ? "go('dispatch',{ids:[" + js(o.order_id) + "]})" : act1[1] === 'deliveryForm' ? "go('deliveryForm',{dispatch_id:" + js(o.dispatch_id) + "})" :
+        var on = act1[1] === 'supply' ? "go('supply',{id:" + js(o.order_id) + "})" : act1[1] === 'dispatch' ? "go('dispatch',{ids:[" + js(o.order_id) + "]})" : act1[1] === 'deliveryStop' ? "go('deliveryStop',{dispatch_id:" + js(o.dispatch_id) + "})" :
           act1[1] === 'pod' ? 'openPodUpload(' + js(o.delivery_id) + ',' + js(o.order_id) + ')' : 'openInvoiceForm(' + js(o.order_id) + ')';
-        var allowed = { supply: can('supply.confirm'), dispatch: can('dispatch.create'), deliveryForm: can('delivery.complete'), pod: can('pod.upload'), invoice: can('invoice.create') }[act1[1]];
+        var allowed = { supply: can('supply.confirm'), dispatch: can('dispatch.create'), deliveryStop: can('delivery.complete'), pod: can('pod.upload'), invoice: can('invoice.create') }[act1[1]];
         if (allowed) btn = '<button class="btn sm" onclick="event.stopPropagation();' + on.replace(/"/g, '&quot;') + '">' + act1[0] + '</button>';
       }
       return '<div class="row" onclick="go(\'orderDetail\',{id:' + js(o.order_id) + '})">' + (bulk ? '<input type="checkbox" class="ivSel" value="' + attr(o.order_id) + '" onclick="event.stopPropagation();bulkCount()" style="width:20px;height:20px;min-height:0;flex:none;margin-right:8px">' : '') + '<div class="m"><b>' + esc(o.customer_name) + '</b><span>' + esc([fdate(o.order_date_key), o.salesman_name, o.beat_name, o.requested_delivery_date ? 'delivery ' + fdate(o.requested_delivery_date) : ''].filter(Boolean).join(' · ')) + '</span>' + miniRoute(o) + '</div><div class="r"><b>' + money(o.supplied_value || o.order_value) + '</b>' + (btn || chip(o.status, o.status_label)) + '</div></div>';
@@ -1905,11 +1969,19 @@ var ADMIN_VIEWS = {};
 ADMIN_VIEWS.users = function () {
   call('listUsersAdmin').then(function (rows) {
     S.cache.users = rows;
-    adminPage('users', num(rows.length) + ' users', '<button class="btn sm" onclick="openUserForm()">Add user</button>',
+    adminPage('users', num(rows.length) + ' users', '<button class="btn sm ghost" onclick="openRoleGuide()">What can each role do?</button> <button class="btn sm" onclick="openUserForm()">Add user</button>',
       '<div class="section">' + searchBox('usQ', 'Search name, mobile, role', 'filterUsers()') + '<div class="rows" id="usList" style="margin-top:6px"></div></div>');
     filterUsers();
   }, failed);
 };
+function openRoleGuide() {
+  call('getRoleGuide').then(function (g) {
+    openModal('<h3>What each role can do</h3><div style="max-height:68vh;overflow:auto">' + g.map(function (r, i) {
+      return '<details' + (i === 0 ? ' open' : '') + ' style="margin-bottom:10px"><summary><b>' + esc(r.role) + '</b></summary><div class="small muted" style="margin:6px 0">' + esc(r.note) + '</div>' +
+        '<div class="small"><b>Can:</b> ' + r.can.map(esc).join(' · ') + '</div><div class="small muted" style="margin-top:6px"><b>Cannot:</b> ' + r.cannot.map(esc).join(' · ') + '</div></details>';
+    }).join('') + '</div><div class="actions end" style="margin-top:10px"><button class="btn" onclick="closeModal()">Close</button></div>');
+  }, showErr);
+}
 function filterUsers() {
   var q = val('usQ').toLowerCase(), rows = (S.cache.users || []).filter(function (u) { return !q || [u.name, u.mobile, u.role, u.user_id, u.email].join(' ').toLowerCase().indexOf(q) >= 0; });
   $('usList').innerHTML = rows.map(function (u) {
@@ -2400,7 +2472,7 @@ function printDoc(type, id, mode) {
     if ($('pvLedger')) $('pvLedger').onchange = function () { st.ledger = this.checked; render(); };
     $('pvPrint').onclick = function () { render(); var old = document.title; document.title = d.file_name || d.number; var back = function () { document.title = old; window.removeEventListener('afterprint', back); }; window.addEventListener('afterprint', back); window.print(); setTimeout(back, 60000); };
     render();
-    if ($('pdfDrive')) $('pdfDrive').onclick = function () { act(this, 'Saving…', function () { return call('saveDocumentPdf', type, id, st.mode); }).then(function (r) { if (r && r.url) window.open(r.url, '_blank'); }, swallow); };
+    if ($('pdfDrive')) $('pdfDrive').onclick = function () { act(this, 'Saving…', function () { return call('saveDocumentPdf', type, id, st.mode); }).then(function (r) { if (r && r.url) viewFile(r.url, 'Saved file'); }, swallow); };
   }, showErr);
 }
 </script>
@@ -2654,7 +2726,7 @@ function downloadReport(btn) {
   }).catch(swallow);
 }
 function saveReportDrive(btn) {
-  act(btn, 'Saving…', function () { return call('saveReportToDrive', S.cache.report.id, S.cache.reportParams); }).then(function (r) { if (r && r.url) window.open(r.url, '_blank'); }, swallow);
+  act(btn, 'Saving…', function () { return call('saveReportToDrive', S.cache.report.id, S.cache.reportParams); }).then(function (r) { if (r && r.url) viewFile(r.url, 'Saved file'); }, swallow);
 }
 </script>
 
@@ -2818,7 +2890,7 @@ function d2cNoteForm(o) {
 function d2cShowPhoto(kind, id) {
   call('d2cProofImage', kind, id).then(function (r) {
     openModal('<h3>' + (kind === 'POD' ? 'Delivery photo' : 'Payment screenshot') + '</h3><img alt="" src="' + attr(r.data_url) + '" style="max-width:100%;max-height:70vh;border-radius:8px;display:block;margin:0 auto">' +
-      '<div class="actions end" style="margin-top:10px">' + (r.url ? '<a class="btn ghost" target="_blank" href="' + attr(r.url) + '">Open in Drive</a>' : '') + '<button class="btn" onclick="closeModal()">Close</button></div>');
+      '<div class="actions end" style="margin-top:10px">' + '<button class="btn" onclick="closeModal()">Close</button></div>');
   }, showErr);
 }
 
