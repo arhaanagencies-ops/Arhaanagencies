@@ -510,9 +510,10 @@ function viewFile(url, title) {
   call('getProofFile', url).then(function (r) {
     var isImg = /^data:image\//.test(r.data_url), isPdf = /^data:application\/pdf/.test(r.data_url);
     var body = isImg ? '<img alt="" src="' + attr(r.data_url) + '" style="max-width:100%;max-height:70vh;border-radius:8px;display:block;margin:0 auto">'
-      : isPdf ? '<iframe src="' + attr(r.data_url) + '" style="width:100%;height:70vh;border:0"></iframe>'
+      : isPdf ? '<iframe id="vfPdf" style="width:100%;height:70vh;border:0"></iframe>'
       : '<p class="note">This file type cannot be previewed.</p>';
     openModal('<h3>' + esc(title || r.name || 'File') + '</h3>' + body + '<div class="actions end" style="margin-top:10px"><a class="btn ghost" download="' + attr(r.name || 'file') + '" href="' + attr(r.data_url) + '">Download</a><button class="btn" onclick="closeModal()">Close</button></div>');
+    if (isPdf) { try { fetch(r.data_url).then(function (x) { return x.blob(); }).then(function (b) { var f = $('vfPdf'); if (f) f.src = URL.createObjectURL(b); }); } catch (e) {} }
   }, showErr);
 }
 document.addEventListener('click', function (ev) {
@@ -656,6 +657,7 @@ function navItems() {
     { id: 'collect', label: 'Collections', icon: 'cash', show: can('payment.record'), grp: 'Money' },
     { id: 'finance', label: g === 'SALES' ? 'My outstanding' : 'Finance', icon: 'finance', show: can('finance.view'), grp: 'Money' },
     { id: 'payables', label: 'Payables (company)', icon: 'wallet', show: can('payable.view'), grp: 'Money' },
+    { id: 'dayReport', label: 'Day closing report', icon: 'closing', show: can('dayreport.view'), grp: 'Money' },
     { id: 'billing', label: 'Invoices & notes', icon: 'order', show: can('invoice.create') || can('note.create'), grp: 'Money' },
     { id: 'approvals', label: 'Approvals', icon: 'check', show: can('customer.approve') || can('payment.approve') || can('expense.approve') || can('beat.manage') || can('note.post'), grp: 'Money' },
     { id: 'followups', label: 'Follow-ups', icon: 'call', show: can('followup.manage'), grp: 'Day' },
@@ -681,12 +683,12 @@ function paintShell() {
   $('hUser').textContent = b.user.name + ' · ' + cap(b.user.role);
   $('hLogo').innerHTML = '<img alt="Arhaan Agencies" src="' + APP_LOGO + '">';
   var sel = $('companySel');
-  sel.innerHTML = opts(b.companies.length > 1 && isAdmin() ? [{ company_id: 'ALL', company_name: '★ All companies (read-only)' }].concat(b.companies) : b.companies, c.company_id, undefined, 'company_id', 'company_name');
+  sel.innerHTML = opts((b.companies.length > 1 && isAdmin() ? [{ company_id: 'ALL', company_name: '★ All companies (read-only)' }] : []).concat(b.companies.map(function (x) { return { company_id: x.company_id, company_name: x.brand_name || x.company_name }; })), c.company_id, undefined, 'company_id', 'company_name');
   sel.disabled = b.companies.length < 2;
   setUnread(b.unread || 0);
   paintNav();
 }
-var SHORT_LABEL = { payables: 'Payables', d2c: 'D2C', d2cDeliver: 'Deliver', profile: 'Profile', billing: 'Billing', stock: 'Stock', reports: 'Reports', order: 'Order', orders: 'Orders', control: 'Control', deliveries: 'Deliveries', customers: 'Outlets', collect: 'Collect', finance: 'Finance', approvals: 'Approvals', vehicles: 'Fuel', expenses: 'Expenses' };
+var SHORT_LABEL = { dayReport: 'Day report', payables: 'Payables', d2c: 'D2C', d2cDeliver: 'Deliver', profile: 'Profile', billing: 'Billing', stock: 'Stock', reports: 'Reports', order: 'Order', orders: 'Orders', control: 'Control', deliveries: 'Deliveries', customers: 'Outlets', collect: 'Collect', finance: 'Finance', approvals: 'Approvals', vehicles: 'Trip & fuel', expenses: 'Expenses' };
 function paintNav() {
   var items = navItems(), groups = [], html = '';
   items.forEach(function (i) { if (groups.indexOf(i.grp) < 0) groups.push(i.grp); });
@@ -788,7 +790,7 @@ function kpi(label, value, sub, tone, onclick) {
 }
 function emptyState(title, text, btn) { return '<div class="empty"><b>' + esc(title) + '</b>' + (text ? esc(text) : '') + (btn ? '<div style="margin-top:12px">' + btn + '</div>' : '') + '</div>'; }
 function searchBox(id, placeholder, oninput) { return '<div class="search">' + icon('search') + '<input id="' + id + '" type="search" placeholder="' + attr(placeholder) + '" oninput="' + oninput + '"></div>'; }
-function companyLine() { var c = S.boot.company; return !c ? '' : (c.all ? '<b>All companies</b> (read-only)' : '<b>' + esc(String(c.company_name || '').split(/\s+/)[0]) + '</b>'); }
+function companyLine() { var c = S.boot.company; return !c ? '' : (c.all ? '<b>All companies</b> (read-only)' : '<b>' + esc(c.brand_name || String(c.company_name || '').split(/\s+/)[0]) + '</b>'); }
 
 /* ------------------------------ PROFILE / NOTIFICATIONS ------------------------------ */
 VIEWS.profile = function (p) {
@@ -1573,7 +1575,9 @@ VIEWS.collect = function () {
   Promise.all([call('listCustomers', { with_outstanding: can('finance.view') }), call('listPayments', { mine: true, status: 'ALL', from: addDays(today(), -30) })]).then(function (r) {
     S.cache.collCust = r[0];
     var pays = r[1].rows;
-    setMain(head('Collections', companyLine()) + '<div class="section"><h3>Collect from</h3>' + searchBox('colQ', 'Search outlet by name, mobile or area', 'filterCollect()') + '<div class="picker" id="colList" style="margin-top:8px"></div></div>' +
+    var tdy = { cash: 0, online: 0, cheque: 0 };
+    pays.forEach(function (x) { if (x.payment_date !== today() || x.approval_status === 'REJECTED') return; var m = String(x.mode || '').toUpperCase(); tdy[m === 'CASH' ? 'cash' : (m === 'CHEQUE' ? 'cheque' : 'online')] += Number(x.amount) || 0; });
+    setMain(head('Collections', companyLine()) + '<div class="kpis">' + kpi('💵 Cash taken today', money0(tdy.cash), 'hand this over', 'good') + kpi('📱 Online today', money0(tdy.online), 'UPI · RTGS · bank', '') + (tdy.cheque ? kpi('🧾 Cheques today', money0(tdy.cheque), '', '') : '') + '</div><div class="section"><h3>Collect from</h3>' + searchBox('colQ', 'Search outlet by name, mobile or area', 'filterCollect()') + '<div class="picker" id="colList" style="margin-top:8px"></div></div>' +
       '<div class="section"><h3>My collections (last 30 days)</h3>' + (pays.length ? '<div class="rows">' + pays.map(paymentRow).join('') + '</div>' : emptyState('No collections yet', '')) + '</div>');
     filterCollect();
   }, failed);
@@ -1722,6 +1726,7 @@ VIEWS.expenses = function (p) {
         return '<div class="row static"><div class="m"><b>' + esc(cap(e.category)) + ' · ' + esc(e.employee) + '</b><span style="white-space:normal">' + esc(fdate(e.date) + ' · ' + e.description + (e.vehicle ? ' · ' + e.vehicle : '') + (e.rejection_reason ? ' · ' + e.rejection_reason : '')) + '</span></div><div class="r"><b>' + money(e.amount) + '</b>' + chip(e.status) +
           '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (e.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(e.proof) + '">Bill</a>' : '') + (can('expense.approve') && e.status === 'PENDING' && e.employee_id !== S.boot.user.user_id ? '<button class="btn sm ok" onclick="approveExpenseUi(' + js(e.expense_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveExpenseUi(' + js(e.expense_id) + ',false)">Reject</button>' : '') + '</div></div></div>';
       }).join('') + '</div>' : emptyState('No expenses this month', '', '<button class="btn sm" onclick="openExpenseForm()">Add expense</button>')) + '</div>');
+    loadAdvanceBox();
   }, failed);
 };
 function openExpenseForm() {
@@ -1743,13 +1748,15 @@ function openExpenseForm() {
 /* =========================== VEHICLES & FUEL =========================== */
 VIEWS.vehicles = function (p) {
   p = p || {}; var month = p.month || today().slice(0, 7);
-  Promise.all([call('listVehicles'), call('listFuel', { month: month })]).then(function (r) {
-    var vs = r[0], f = r[1]; S.cache.vehicles = vs;
+  Promise.all([call('listVehicles'), call('listFuel', { month: month }), can('trip.record') ? call('listTrips', { month: month }) : Promise.resolve(null)]).then(function (r) {
+    var vs = r[0], f = r[1], trips = r[2]; S.cache.vehicles = vs;
     var html = head('Vehicles & fuel', num(vs.length) + ' vehicles', '<div class="actions">' + '<button class="btn sm" onclick="openFuelForm()">Record fuel</button>' + (can('vehicle.manage') ? '<button class="btn sm ghost" onclick="openVehicleForm()">Add vehicle</button>' : '') + '</div>');
+    if (group() === 'DELIVERY') html += tripsSection(trips);
     html += '<div class="filters"><label class="field"><span>Month</span><input type="month" value="' + month + '" onchange="go(\'vehicles\',{month:this.value},{replace:true})"></label></div>';
     html += '<div class="kpis">' + kpi('Fuel cost', money0(f.total_amount), num(f.rows.length) + ' fills', 'warn') + kpi('Distance', num(f.total_km) + ' km', '') + kpi('Cost per km', f.total_km ? money(f.total_amount / f.total_km) : '–', '') + '</div>';
     if (f.summary.length) html += '<div class="section"><h3>By vehicle</h3><div class="tbl-wrap"><table class="tbl"><tr><th>Vehicle</th><th class="n">KM</th><th class="n">Litres</th><th class="n">Cost</th><th class="n">KM/L</th><th class="n">₹/KM</th></tr>' + f.summary.map(function (s) { return '<tr><td>' + esc(s.vehicle) + '</td><td class="n">' + num(s.km) + '</td><td class="n">' + num(s.litres) + '</td><td class="n">' + money0(s.amount) + '</td><td class="n">' + s.km_per_litre + '</td><td class="n">' + money(s.cost_per_km) + '</td></tr>'; }).join('') + '</table></div></div>';
     html += '<div class="section"><h3>Vehicles</h3>' + (vs.length ? '<div class="rows">' + vs.map(function (v) { return '<div class="row static"><div class="m"><b>' + esc(v.vehicle_number) + '</b><span>' + esc([cap(v.vehicle_type), cap(v.ownership), v.driver_name].filter(Boolean).join(' · ')) + '</span></div>' + chip(v.status) + (can('vehicle.manage') ? '<button class="btn sm ghost" onclick="openVehicleForm(' + js(v.vehicle_id) + ')">Edit</button>' : '') + '</div>'; }).join('') + '</div>' : emptyState('No vehicles yet', can('vehicle.manage') ? 'Add your delivery vehicles to track dispatch and fuel.' : '')) + '</div>';
+    if (group() !== 'DELIVERY') html += tripsSection(trips);
     html += '<div class="section"><h3>Fuel log</h3>' + (f.rows.length ? '<div class="rows">' + f.rows.map(function (x) { return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · ' + num(x.litres) + ' L</b><span>' + esc(fdate(x.fuel_date) + ' · ' + x.opening_km + '→' + x.closing_km + ' km · ' + x.km_per_litre + ' km/L · ₹' + x.cost_per_km + '/km' + (x.station ? ' · ' + x.station : '') + ' · ' + x.driver) + '</span></div><div class="r"><b>' + money(x.amount) + '</b>' + (x.receipt ? '<a class="tiny" target="_blank" href="' + attr(x.receipt) + '">Receipt</a>' : '') + '</div></div>'; }).join('') + '</div>' : emptyState('No fuel entries this month', '')) + '</div>';
     setMain(html);
   }, failed);
@@ -1840,7 +1847,7 @@ VIEWS.finance = function (p) {
     }, failed);
   } else if (p.tab === 'payments') {
     call('listPayments', { status: p.status || 'ALL', from: p.from || '', to: p.to || '', mine: isSales() }).then(function (r) {
-      var html = head(title, companyLine()) + tabHtml + '<div class="kpis">' + kpi('Received', money0(r.total), num(r.count) + ' payments', 'cash') + kpi('Unallocated', money0(r.unallocated), 'not yet set against invoices', r.unallocated ? 'warn' : '') + '</div>';
+      var html = head(title, companyLine()) + tabHtml + '<div class="kpis">' + kpi('Received', money0(r.total), num(r.count) + ' payments', 'cash') + kpi('💵 Cash', money0(r.by_mode.cash), num(r.by_mode.cash_count) + ' entries', 'good') + kpi('📱 UPI / online', money0(r.by_mode.online), 'UPI · RTGS · bank · card · ' + num(r.by_mode.online_count), '') + kpi('🧾 Cheque', money0(r.by_mode.cheque), num(r.by_mode.cheque_count) + ' entries', '') + kpi('Unallocated', money0(r.unallocated), 'not yet set against invoices', r.unallocated ? 'warn' : '') + '</div>';
       html += '<div class="filters" id="payF"><label class="field"><span>Status</span><select name="status">' + opts([{ value: 'ALL', label: 'All' }, { value: 'PENDING', label: 'Waiting verification' }, { value: 'APPROVED', label: 'Verified' }, { value: 'UNALLOCATED', label: 'With unallocated amount' }, { value: 'REJECTED', label: 'Rejected' }], p.status || 'ALL') + '</select></label>' +
         '<label class="field"><span>From</span><input type="date" name="from" value="' + attr(p.from || '') + '"></label><label class="field"><span>To</span><input type="date" name="to" value="' + attr(p.to || '') + '"></label><div class="actions" style="align-items:flex-end"><button class="btn" onclick="var v=formVals(\'payF\');v.tab=\'payments\';go(\'finance\',v,{replace:true})">Apply</button></div></div>';
       html += '<div class="section">' + (r.rows.length ? '<div class="rows">' + r.rows.map(function (pm) {
@@ -2057,6 +2064,7 @@ ADMIN_VIEWS.companies = function () {
 function openCompanyForm(id) {
   var c = (S.cache.companies || []).filter(function (x) { return x.company_id === id; })[0] || {};
   openModal('<h3>' + (id ? 'Edit company' : 'Add company') + '</h3><div class="form" id="cF"><label class="field"><span>Company name <em>*</em></span><input name="company_name" value="' + attr(c.company_name) + '"></label>' +
+    '<label class="field"><span>Brand name (shown on screens)</span><input name="brand_name" maxlength="30" value="' + attr(c.brand_name) + '"><small>Short name shown under page titles, e.g. Pepsi. Leave blank to use the first word of the company name.</small></label>' +
     '<div class="grid2"><label class="field"><span>Short code <em>*</em></span><input name="code" maxlength="4" style="text-transform:uppercase" value="' + attr(c.code) + '"><small>1–4 letters. Starts every invoice number: ' + esc((c.code || 'VBL').toUpperCase()) + '/2627/00001</small></label><label class="field"><span>Contact person</span><input name="contact_person" value="' + attr(c.contact_person) + '"></label></div>' +
     '<div class="grid2"><label class="field"><span>Company GSTIN (supplier)</span><input name="gstin" maxlength="15" style="text-transform:uppercase" value="' + attr(c.gstin) + '"><small>Used on purchase bills from this principal.</small></label><label class="field"><span>State</span><select name="state_code">' + opts(L('STATES'), c.state_code, 'Select state') + '</select></label></div>' +
     '<label class="field"><span>Address</span><input name="address" value="' + attr(c.address) + '"></label>' +
@@ -3373,6 +3381,113 @@ function spLedger(supplier) {
       l.rows.map(function (x) { return '<tr><td>' + fdate(x.date) + '</td><td>' + esc(x.type) + '</td><td>' + esc(x.ref) + '</td><td class="n">' + (x.debit ? money(x.debit) : '') + '</td><td class="n">' + (x.credit ? money(x.credit) : '') + '</td><td class="n">' + money(x.balance) + '</td></tr>'; }).join('') + '</table></div>' +
       '<div class="actions end" style="margin-top:10px"><button class="btn ghost" onclick="closeModal();go(\'report\',{id:\'supplier_ledger\'})">Excel</button><button class="btn" onclick="closeModal()">Close</button></div>');
   }, showErr);
+}
+</script>
+
+<script>
+/* =========================== V8.1 DAY CLOSING REPORT =========================== */
+VIEWS.dayReport = function (p) {
+  p = p || {}; var date = p.date || today();
+  Promise.all([call('getDayReport', date), call('listDayReports', { month: date.slice(0, 7) })]).then(function (r) {
+    var d = r[0], saved = r[1]; S.cache.dayReport = d;
+    var html = head('Day closing report', companyLine() + ' · everything of one day in a PDF');
+    html += '<div class="filters"><label class="field"><span>Date</span><input type="date" id="drDate" max="' + today() + '" value="' + attr(date) + '" onchange="go(\'dayReport\',{date:this.value},{replace:true})"></label>' +
+      '<div class="actions" style="align-items:flex-end"><button class="btn" onclick="printDayReport()">Print / PDF</button><button class="btn ghost" id="drSave" onclick="saveDayReportUi(this)">Save to records</button></div></div>';
+    html += '<div class="kpis">' + kpi('Received', money0(d.collected), 'Cash ' + money0(d.split.cash) + ' · Online ' + money0(d.split.online) + ' · Cheque ' + money0(d.split.cheque), 'cash') + kpi('Expenses + fuel', money0(d.total_expenses + d.total_fuel), 'Exp ' + money0(d.total_expenses) + ' · Fuel ' + money0(d.total_fuel), 'warn') +
+      kpi('Net payment', money0(d.net), 'received – expenses – fuel', d.net < 0 ? 'bad' : 'good') + kpi('Cash in hand', money0(d.cash_in_hand), 'cash only', '') + '</div>';
+    html += '<div class="section"><h3>Report preview</h3><div style="background:#fff;border:1px solid var(--line,#ddd);border-radius:10px;overflow:auto"><div id="drBox" style="width:735px;transform-origin:0 0">' + d.html + '</div></div></div>';
+    html += '<div class="section"><h3>Saved day reports</h3>' + (saved.length ? '<div class="rows">' + saved.map(function (x) {
+      return '<div class="row static"><div class="m"><b>' + esc(fdate(x.report_date)) + '</b><span>Received ' + money0(x.collected) + ' · Expenses ' + money0(x.expenses) + ' · Fuel ' + money0(x.fuel) + ' · <b>Net ' + money0(x.net) + '</b></span><span class="tiny">Saved by ' + esc(x.saved_by) + ' · ' + esc(x.saved_at) + '</span></div>' +
+        '<div class="r"><button class="btn sm" onclick="viewFile(' + js(x.pdf_url) + ',' + js('Day report ' + x.report_date) + ')">Open PDF</button></div></div>';
+    }).join('') + '</div>' : emptyState('No saved reports this month', 'Tap “Save to records” after closing the day.')) + '</div>';
+    setMain(html);
+    var box = $('drBox'); if (box) { var w = box.parentNode.clientWidth - 4; if (w > 0 && w < 735) { var z = w / 735; box.style.zoom = z.toFixed(3); } }
+  }, failed);
+};
+function printDayReport() {
+  var d = S.cache.dayReport; if (!d) return;
+  $('printArea').innerHTML = d.html;
+  $('pageStyle').textContent = '@page { size: A4 portrait; margin: 8mm; }';
+  var old = document.title; document.title = 'Day report ' + d.date + ' ' + d.company_name;
+  var back = function () { document.title = old; window.removeEventListener('afterprint', back); };
+  window.addEventListener('afterprint', back);
+  setTimeout(function () { window.print(); }, 150);
+}
+function saveDayReportUi(btn) {
+  var d = S.cache.dayReport; if (!d) return;
+  act(btn, 'Saving PDF…', function () { return call('saveDayReport', d.date); }).then(function () { go('dayReport', { date: d.date }, { replace: true }); }, swallow);
+}
+
+/* =========================== V8.1 STAFF ADVANCES =========================== */
+function loadAdvanceBox() {
+  if (!can('advance.manage')) return;
+  call('listAdvances').then(function (a) {
+    var html = '<div class="section" id="advBox"><div class="section-head"><h3>Advances given to staff</h3><button class="btn sm" onclick="openAdvanceForm()">Give advance</button></div>' +
+      '<div class="note small" style="margin-bottom:8px">Cash given before dispatch (fuel, toll…). Expenses and fuel entered by that person are spent from his advance first, so they are not taken out of the day’s collection.</div>' +
+      (a.balances.length ? '<div class="rows">' + a.balances.map(function (b) { return '<div class="row static"><div class="m"><b>' + esc(b.person) + '</b><span>Balance with him</span></div><div class="r"><b>' + money(b.balance) + '</b> <button class="btn sm ghost" onclick="openAdvanceReturn(' + js(b.user_id) + ',' + js(b.person) + ',' + b.balance + ')">Balance returned</button></div></div>'; }).join('') + '</div>' : '<div class="muted small">No advance is pending with anyone.</div>') +
+      (a.rows.length ? '<details style="margin-top:8px"><summary class="small">Advance history</summary><div class="rows">' + a.rows.map(function (x) { return '<div class="row static"><div class="m"><b>' + esc(x.person) + ' · ' + (x.kind === 'GIVEN' ? 'given' : 'returned') + '</b><span>' + esc(fdate(x.date) + ' · ' + (x.purpose || '') + ' · by ' + x.by) + '</span></div><div class="r"><b>' + money(x.amount) + '</b></div></div>'; }).join('') + '</div></details>' : '') + '</div>';
+    var old = $('advBox'); if (old) old.remove();
+    $('main').insertAdjacentHTML('beforeend', html);
+  }, swallow);
+}
+function openAdvanceForm() {
+  call('listUserChoices').then(function (us) {
+    openModal('<h3>Give advance</h3><div class="form" id="adF"><label class="field"><span>Given to <em>*</em></span><select name="user_id">' + opts(us, '', 'Select person', 'user_id', 'name') + '</select></label>' +
+      '<div class="grid2"><label class="field"><span>Amount (₹) <em>*</em></span><input name="amount" type="number" inputmode="decimal" step="0.01" min="0"></label><label class="field"><span>Date</span><input name="entry_date" type="date" max="' + today() + '" value="' + today() + '"></label></div>' +
+      '<label class="field"><span>Purpose</span><input name="purpose" placeholder="e.g. Fuel and toll for today’s trip"></label><div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="adOk">Save advance</button></div></div>');
+    $('adOk').onclick = function () { var x = formVals('adF'); act(this, 'Saving…', function () { return call('giveAdvance', x); }).then(function () { closeModal(); loadAdvanceBox(); }, swallow); };
+  }, showErr);
+}
+function openAdvanceReturn(uid, name, bal) {
+  openModal('<h3>Balance returned by ' + esc(name) + '</h3><div class="form" id="arF"><div class="note small">Advance still with him: <b>' + money(bal) + '</b></div><label class="field"><span>Amount returned (₹) <em>*</em></span><input name="amount" type="number" inputmode="decimal" step="0.01" min="0" value="' + attr(bal) + '"></label>' +
+    '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="arOk">Save</button></div></div>');
+  $('arOk').onclick = function () { var x = formVals('arF'); x.user_id = uid; act(this, 'Saving…', function () { return call('returnAdvance', x); }).then(function () { closeModal(); loadAdvanceBox(); }, swallow); };
+}
+
+/* =========================== V8.1 VEHICLE TRIPS =========================== */
+function tripsSection(t) {
+  if (!t) return '';
+  var html = '<div class="section"><div class="section-head"><h3>Trips (start / end KM)</h3><button class="btn sm" onclick="openTripStart()">Start trip</button></div>';
+  html += t.open.length ? '<div class="rows">' + t.open.map(function (x) {
+    return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · running</b><span>' + esc(x.driver_name) + ' · started ' + esc(fdate(x.trip_date)) + ' ' + esc(x.start_time) + ' at ' + num(x.start_km) + ' km</span></div><div class="r"><button class="btn sm danger" onclick="openTripEnd(' + js(x.trip_id) + ')">End trip</button></div></div>';
+  }).join('') + '</div>' : '<div class="note small">No trip running. Tap “Start trip” and enter the odometer reading before you leave.</div>';
+  if (t.summary.length) html += '<div class="tbl-wrap" style="margin-top:8px"><table class="tbl"><tr><th>Vehicle (this month)</th><th class="n">Trips</th><th class="n">KM run</th></tr>' + t.summary.map(function (s) { return '<tr><td>' + esc(s.vehicle) + '</td><td class="n">' + num(s.trips) + '</td><td class="n">' + num(s.km) + '</td></tr>'; }).join('') + '</table></div>';
+  var done = t.rows.filter(function (x) { return x.status === 'CLOSED'; }).slice(0, 30);
+  if (done.length) html += '<div class="rows" style="margin-top:8px">' + done.map(function (x) {
+    return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · ' + num(x.km) + ' km</b><span>' + esc(fdate(x.trip_date)) + ' · ' + esc(x.driver_name) + ' · ' + num(x.start_km) + ' → ' + num(x.end_km) + ' km · ' + esc(x.start_time) + '–' + esc(x.end_time) + '</span></div></div>';
+  }).join('') + '</div>';
+  return html + '</div>';
+}
+function openTripStart() {
+  call('listVehicles').then(function (vs) {
+    vs = vs.filter(function (v) { return v.status === 'ACTIVE' || !v.status; });
+    var mine = vs.filter(function (v) { return v.driver_id === S.boot.user.user_id; })[0];
+    openModal('<h3>Start trip</h3><div class="form" id="tsF"><label class="field"><span>Vehicle <em>*</em></span><select name="vehicle_id">' + opts(vs, mine ? mine.vehicle_id : '', 'Select vehicle', 'vehicle_id', 'vehicle_number') + '</select></label>' +
+      '<label class="field"><span>Odometer reading now (KM) <em>*</em></span><input name="start_km" type="number" inputmode="numeric" min="0"><small>Look at the vehicle meter and type the number.</small></label>' +
+      '<label class="field"><span>Note (route / purpose)</span><input name="note"></label><div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="tsOk">Start trip</button></div></div>');
+    $('tsOk').onclick = function () {
+      var x = formVals('tsF');
+      act(this, 'Starting…', function () {
+        return call('startTrip', x).catch(function (e) {
+          if (/^LOWER_KM/.test(e.message) && confirm(e.message.replace('LOWER_KM: ', '') + '\n\nStart the trip with this reading anyway?')) { x.confirm_lower = true; return call('startTrip', x); }
+          throw e;
+        });
+      }).then(function () { closeModal(); refresh(); }, swallow);
+    };
+  }, showErr);
+}
+function openTripEnd(id) {
+  openModal('<h3>End trip</h3><div class="form" id="teF"><label class="field"><span>Odometer reading now (KM) <em>*</em></span><input name="end_km" type="number" inputmode="numeric" min="0"></label>' +
+    '<label class="field"><span>Note</span><input name="note"></label><div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="teOk">End trip</button></div></div>');
+  $('teOk').onclick = function () {
+    var x = formVals('teF'); x.trip_id = id;
+    act(this, 'Saving…', function () {
+      return call('endTrip', x).catch(function (e) {
+        if (/^FAR_KM/.test(e.message) && confirm(e.message.replace('FAR_KM: ', '') + '\n\nSave anyway?')) { x.confirm_far = true; return call('endTrip', x); }
+        throw e;
+      });
+    }).then(function () { closeModal(); refresh(); }, swallow);
+  };
 }
 </script>
 
