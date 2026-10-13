@@ -938,7 +938,7 @@ VIEWS.customers = function (p) {
   p = p || {};
   Promise.all([call('listBeats', {}), call('listCustomers', { beat_id: p.beat_id || '', status: p.status || 'ACTIVE', with_outstanding: can('finance.view') })]).then(function (r) {
     S.cache.beats = r[0]; var rows = r[1]; S.cache.custRows = rows;
-    setMain(head('Retail outlets', num(rows.length) + ' outlets · ' + companyLine(), can('customer.create') ? '<button class="btn sm" onclick="go(\'outletForm\',{beat_id:' + js(p.beat_id || '') + '})">New outlet</button>' : '') +
+    setMain(head('Retail outlets', num(rows.length) + ' outlets · ' + companyLine(), (can('customer.create') ? '<button class="btn sm" onclick="go(\'outletForm\',{beat_id:' + js(p.beat_id || '') + '})">New outlet</button>' : '') + (can('customer.admin') && S.boot.companies.length > 1 ? ' <button class="btn sm ghost" onclick="openCopyOutlets()">Copy to another company</button>' : '')) +
       '<div class="filters"><label class="field"><span>Beat</span><select onchange="go(\'customers\',{beat_id:this.value,status:' + js(p.status || 'ACTIVE') + '},{replace:true})">' + opts(r[0], p.beat_id, 'All beats', 'beat_id', 'beat_name') + '</select></label>' +
       (can('customer.admin') ? '<label class="field"><span>Status</span><select onchange="go(\'customers\',{beat_id:' + js(p.beat_id || '') + ',status:this.value},{replace:true})">' + opts([{ value: 'ACTIVE', label: 'Active' }, { value: 'PENDING', label: 'Waiting approval' }, { value: 'INACTIVE', label: 'Inactive' }, { value: 'BLOCKED', label: 'Blocked' }, { value: 'ALL', label: 'All' }], p.status || 'ACTIVE') + '</select></label>' : '') +
       '<div class="field wide"><span>Search</span>' + searchBox('custQ', 'Name, mobile, GSTIN, area', 'filterCustomers()') + '</div></div>' +
@@ -946,6 +946,30 @@ VIEWS.customers = function (p) {
     filterCustomers();
   }, failed);
 };
+function openCopyOutlets() {
+  var rows = S.cache.custRows || [], me = (S.boot.company || {}).company_id, others = S.boot.companies.filter(function (c) { return c.status === 'ACTIVE' && c.company_id !== me; });
+  if (!others.length) { showErr('There is no other active company.'); return; }
+  openModal('<h3>Copy outlets to another company</h3><div class="form" id="cpF"><div class="note small">The outlets stay in ' + companyLine() + ' too. A fresh outlet (zero balance, credit limit 0) is created in the other company; outlets already there are skipped.</div>' +
+    '<label class="field"><span>Copy to company <em>*</em></span><select name="target_company_id" id="cpT">' + opts(others, '', 'Select company', 'company_id', 'company_name') + '</select></label>' +
+    '<div class="grid2"><label class="field"><span>Beat there <em>*</em></span><select name="beat_id" id="cpB"><option value="">Select company first</option></select></label><label class="field"><span>Salesman there <em>*</em></span><select name="salesman_id" id="cpS"><option value="">Select company first</option></select></label></div>' +
+    '<div class="field"><span>Outlets (' + rows.length + ' shown in the current list)</span><input class="search" placeholder="Search…" oninput="cpFilter(this.value)"><div id="cpL" style="max-height:220px;overflow:auto;border:1px solid var(--line,#ddd);border-radius:8px;padding:6px">' +
+    rows.map(function (c) { return '<label class="check" data-q="' + attr((c.customer_name + ' ' + (c.area || '')).toLowerCase()) + '"><input type="checkbox" name="customer_ids" data-multi="1" value="' + attr(c.customer_id) + '"> ' + esc(c.customer_name) + ' <small class="muted">' + esc([c.area, c.beat_name].filter(Boolean).join(' · ')) + '</small></label>'; }).join('') + '</div>' +
+    '<div><button type="button" class="btn sm quiet" onclick="cpAll(true)">Select shown</button> <button type="button" class="btn sm quiet" onclick="cpAll(false)">Clear</button></div></div>' +
+    '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="cpOk">Copy outlets</button></div></div>');
+  $('cpT').onchange = function () {
+    if (!this.value) return;
+    call('getCopyTargets', this.value).then(function (t) { $('cpB').innerHTML = opts(t.beats, '', 'Select beat', 'beat_id', 'beat_name'); $('cpS').innerHTML = opts(t.salesmen, '', 'Select salesman', 'user_id', 'name'); }, failed);
+  };
+  $('cpOk').onclick = function () {
+    var v = formVals('cpF');
+    act(this, 'Copying…', function () { return call('copyOutletsToCompany', v); }).then(function (r) {
+      closeModal();
+      if (r.skipped && r.skipped.length) openModal('<h3>Copy finished</h3><div class="note small">' + esc(r.message) + '</div><div class="rows">' + r.skipped.map(function (x) { return '<div class="row static"><div class="m"><b>' + esc(x.name) + '</b><span>' + esc(x.reason) + '</span></div></div>'; }).join('') + '</div><div class="actions end"><button class="btn" onclick="closeModal()">OK</button></div>');
+    }, swallow);
+  };
+}
+function cpFilter(q) { q = q.toLowerCase(); $('cpL').querySelectorAll('label').forEach(function (l) { l.style.display = !q || l.getAttribute('data-q').indexOf(q) >= 0 ? '' : 'none'; }); }
+function cpAll(on) { $('cpL').querySelectorAll('label').forEach(function (l) { if (l.style.display !== 'none') l.querySelector('input').checked = on; }); }
 function filterCustomers() {
   var q = val('custQ').toLowerCase(), rows = (S.cache.custRows || []).filter(function (c) { return !q || [c.customer_name, c.mobile, c.gstin, c.area, c.city, c.customer_id].join(' ').toLowerCase().indexOf(q) >= 0; });
   $('custList').innerHTML = rows.length ? rows.slice(0, 300).map(function (c) {
@@ -2121,7 +2145,9 @@ function openBeatForm(id) {
   openModal('<h3>' + (id ? 'Edit beat' : 'Add beat') + '</h3><div class="form" id="bF"><div class="note small">' + companyLine() + '</div><label class="field"><span>Salesman <em>*</em></span><select name="salesman_id">' + opts(S.cache.salesmen, b.salesman_id, 'Select salesman', 'user_id', 'name') + '</select></label>' +
     '<div class="grid2"><label class="field"><span>Beat name <em>*</em></span><input name="beat_name" value="' + attr(b.beat_name) + '"></label><label class="field"><span>Territory</span><input name="territory" value="' + attr(b.territory) + '"></label></div>' +
     '<div class="field"><span>Working days <em>*</em></span><div class="days">' + L('DAYS').map(function (d) { return '<label><input type="checkbox" name="days" data-multi="1" value="' + d + '"' + (b.days.indexOf(d) >= 0 ? ' checked' : '') + '>' + cap(d).slice(0, 3) + '</label>'; }).join('') + '</div></div>' +
-    '<label class="field"><span>Route sequence</span><input name="route_sequence" value="' + attr(b.route_sequence) + '"></label>' + (id ? '<label class="field"><span>Reason for change</span><input name="change_reason"></label>' : '') +
+    '<label class="field"><span>Route sequence</span><input name="route_sequence" value="' + attr(b.route_sequence) + '"></label>' +
+    '<label class="check"><input type="checkbox" name="sync_delivery"' + (id ? '' : ' checked') + '> Also use these days as delivery days (replaces the beat\'s current delivery days)</label>' +
+    (id ? '<label class="check"><input type="checkbox" name="sync_clear_outlets"> Remove outlet-specific delivery days in this beat so the beat days apply to every outlet</label>' : '') + (id ? '<label class="field"><span>Reason for change</span><input name="change_reason"></label>' : '') +
     '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="bOk">Save beat</button></div></div>');
   $('bOk').onclick = function () { var v = formVals('bF'); v.beat_id = id || ''; act(this, 'Saving…', function () { return call('saveBeat', v); }).then(function () { closeModal(); S.cache.beats = null; refresh(); }, swallow); };
 }
@@ -2134,7 +2160,7 @@ ADMIN_VIEWS.schedules = function () {
     var rows = r[0], beats = r[1]; S.cache.schBeats = beats;
     var byBeat = {}; rows.forEach(function (s) { var k = s.beat_name || s.customer_name || 'Company'; (byBeat[k] = byBeat[k] || []).push(s); });
     var noSched = beats.filter(function (b) { return !rows.some(function (s) { return s.beat_id === b.beat_id && s.status === 'ACTIVE'; }); });
-    adminPage('schedules', 'When orders can be delivered · ' + companyLine(), '<button class="btn sm" onclick="openScheduleForm()">Add delivery days</button>',
+    adminPage('schedules', 'When orders can be delivered · ' + companyLine(), '<button class="btn sm ghost" onclick="openBulkDays()">Bulk set days</button> <button class="btn sm ghost" onclick="openWhyDays()">Why these days?</button> <button class="btn sm" onclick="openScheduleForm()">Add delivery days</button>',
       '<div class="note small" style="margin-bottom:12px">Booking for a delivery day closes at ' + esc(S.boot.config.booking_cutoff_time) + ' the day before. Outlet-specific days override the beat; beats without a schedule fall back to the setting in Settings.</div>' +
       (noSched.length ? '<div class="note warn small" style="margin-bottom:12px">' + num(noSched.length) + ' beat(s) have no delivery schedule: ' + esc(noSched.slice(0, 8).map(function (b) { return b.beat_name; }).join(', ')) + (noSched.length > 8 ? '…' : '') + '</div>' : '') +
       '<div class="section">' + (rows.length ? '<div class="rows">' + Object.keys(byBeat).sort().map(function (k) { return '<div class="row static" style="align-items:flex-start"><div class="m"><b>' + esc(k) + '</b><span>' + esc(byBeat[k][0].level === 'OUTLET' ? 'Outlet-specific' : 'Beat') + '</span></div><div class="actions" style="justify-content:flex-end">' +
@@ -2146,6 +2172,38 @@ function openScheduleForm() {
     '<div class="field"><span>Delivery days <em>*</em></span><div class="days">' + L('DAYS').map(function (d) { return '<label><input type="checkbox" name="days" data-multi="1" value="' + d + '">' + cap(d).slice(0, 3) + '</label>'; }).join('') + '</div></div>' +
     '<label class="field"><span>Sequence</span><input name="delivery_sequence"></label><div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="sOk">Save delivery days</button></div></div>');
   $('sOk').onclick = function () { var v = formVals('sF'); act(this, 'Saving…', function () { return call('saveSchedule', v); }).then(function () { closeModal(); refresh(); }, swallow); };
+}
+/* bulk delivery days + explain */
+function pickList_(id, items, idKey, nameKey, subFn) {
+  return '<input class="search" placeholder="Search…" oninput="pickFilter(this,\'' + id + '\')"><div id="' + id + '" class="pick" style="max-height:220px;overflow:auto;border:1px solid var(--line,#ddd);border-radius:8px;padding:6px">' +
+    items.map(function (x) { return '<label class="check" data-q="' + attr((x[nameKey] + ' ' + (subFn ? subFn(x) : '')).toLowerCase()) + '"><input type="checkbox" name="' + id + '" data-multi="1" value="' + attr(x[idKey]) + '"> ' + esc(x[nameKey]) + (subFn ? ' <small class="muted">' + esc(subFn(x)) + '</small>' : '') + '</label>'; }).join('') + '</div>' +
+    '<div class="row-actions"><button type="button" class="btn sm quiet" onclick="pickAll(\'' + id + '\',true)">Select shown</button> <button type="button" class="btn sm quiet" onclick="pickAll(\'' + id + '\',false)">Clear</button></div>';
+}
+function pickFilter(inp, id) { var q = inp.value.toLowerCase(); $(id).querySelectorAll('label').forEach(function (l) { l.style.display = !q || l.getAttribute('data-q').indexOf(q) >= 0 ? '' : 'none'; }); }
+function pickAll(id, on) { $(id).querySelectorAll('label').forEach(function (l) { if (l.style.display !== 'none') l.querySelector('input').checked = on; }); }
+function openBulkDays() {
+  call('listCustomers', { status: 'ACTIVE' }).then(function (custs) {
+    S.cache.bulkCusts = custs;
+    var beats = S.cache.schBeats || [];
+    openModal('<h3>Bulk set delivery days</h3><div class="form" id="bdF"><div class="note small">' + companyLine() + ' · replaces the current delivery days of everything you tick.</div>' +
+      '<label class="field"><span>Apply to</span><select name="mode" onchange="$(\'bdBeats\').style.display=this.value===\'beats\'?\'\':\'none\';$(\'bdOut\').style.display=this.value===\'outlets\'?\'\':\'none\'"><option value="beats">Whole beats</option><option value="outlets">Selected outlets</option></select></label>' +
+      '<div id="bdBeats">' + pickList_('bd_beats', beats, 'beat_id', 'beat_name', function (b) { return b.salesman_name || ''; }) + '<label class="check"><input type="checkbox" name="clear_outlet_overrides" checked> Also remove outlet-specific days inside these beats</label></div>' +
+      '<div id="bdOut" style="display:none">' + pickList_('bd_outs', custs, 'customer_id', 'customer_name', function (c) { return [c.area, c.beat_name].filter(Boolean).join(' · '); }) + '</div>' +
+      '<div class="field"><span>Delivery days <em>*</em></span><div class="days">' + L('DAYS').map(function (d) { return '<label><input type="checkbox" name="days" data-multi="1" value="' + d + '">' + cap(d).slice(0, 3) + '</label>'; }).join('') + '</div></div>' +
+      '<label class="field"><span>Booking cut-off (optional)</span><input name="cutoff_time" placeholder="e.g. 20:00"></label>' +
+      '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="bdOk">Apply</button></div></div>');
+    $('bdOk').onclick = function () {
+      var v = formVals('bdF'), mode = v.mode, d = { days: v.days, cutoff_time: v.cutoff_time };
+      if (mode === 'beats') { d.beat_ids = v.bd_beats; d.clear_outlet_overrides = !!v.clear_outlet_overrides; } else d.customer_ids = v.bd_outs;
+      act(this, 'Applying…', function () { return call('bulkSetDeliveryDays', d); }).then(function (r) { closeModal(); refresh(); }, swallow);
+    };
+  }, failed);
+}
+function openWhyDays() {
+  call('listCustomers', { status: 'ACTIVE' }).then(function (custs) {
+    openModal('<h3>Why does an outlet show these days?</h3><div class="form"><label class="field"><span>Outlet</span><select id="whyC">' + opts(custs, '', 'Select outlet', 'customer_id', 'customer_name') + '</select></label><div id="whyOut" class="note small">Select an outlet.</div><div class="actions end"><button class="btn ghost" onclick="closeModal()">Close</button></div></div>');
+    $('whyC').onchange = function () { if (!this.value) return; call('explainDeliveryDays', this.value).then(function (r) { $('whyOut').innerHTML = '<b>' + esc(r.outlet) + '</b> (' + esc(r.beat) + ')<br>Delivery days: <b>' + esc((r.days || []).map(function (d) { return cap(d).slice(0, 3); }).join(', ') || 'none') + '</b><br>Source: ' + esc(r.source_label); }, failed); };
+  }, failed);
 }
 function scheduleStatusUi(id, st) { askReason(st === 'ACTIVE' ? 'Switch delivery day on' : 'Switch delivery day off', null, {}).then(function (r) { act(null, '', function () { return call('setScheduleStatus', id, st, r.reason); }).then(refresh, swallow); }); }
 
