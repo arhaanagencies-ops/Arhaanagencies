@@ -657,6 +657,7 @@ function navItems() {
     { id: 'collect', label: 'Collections', icon: 'cash', show: can('payment.record'), grp: 'Money' },
     { id: 'finance', label: g === 'SALES' ? 'My outstanding' : 'Finance', icon: 'finance', show: can('finance.view'), grp: 'Money' },
     { id: 'payables', label: 'Payables (company)', icon: 'wallet', show: can('payable.view'), grp: 'Money' },
+    { id: 'accounts', label: 'Books of account', icon: 'finance', show: can('acc.view'), grp: 'Money' },
     { id: 'dayReport', label: 'Day closing report', icon: 'closing', show: can('dayreport.view'), grp: 'Money' },
     { id: 'billing', label: 'Invoices & notes', icon: 'order', show: can('invoice.create') || can('note.create'), grp: 'Money' },
     { id: 'approvals', label: 'Approvals', icon: 'check', show: can('customer.approve') || can('payment.approve') || can('expense.approve') || can('beat.manage') || can('note.post'), grp: 'Money' },
@@ -1522,7 +1523,7 @@ function openInvoiceForm(orderId) {
       '<div class="tbl-wrap" style="margin-bottom:10px"><table class="tbl"><tr><th>Product</th><th>HSN</th><th class="n">Qty</th><th class="n">Rate incl.</th><th class="n">GST</th><th class="n">Taxable</th>' + gstCols + '<th class="n">Amount</th></tr>' +
       d.lines.map(function (l) { return '<tr><td>' + esc(l.product_name) + '</td><td>' + esc(l.hsn) + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + money(l.rate_incl) + '</td><td class="n">' + l.gst_rate + '%</td><td class="n">' + money(l.taxable) + '</td>' + (d.inter_state ? '<td class="n">' + money(l.igst) + '</td>' : '<td class="n">' + money(l.cgst) + '</td><td class="n">' + money(l.sgst) + '</td>') + '<td class="n">' + money(l.gross) + '</td></tr>'; }).join('') +
       '</table></div><dl class="kv" style="margin-bottom:10px"><dt>Taxable value</dt><dd class="num">' + money(d.taxable_value) + '</dd>' + (d.inter_state ? '<dt>IGST</dt><dd class="num">' + money(d.igst) + '</dd>' : '<dt>CGST</dt><dd class="num">' + money(d.cgst) + '</dd><dt>SGST</dt><dd class="num">' + money(d.sgst) + '</dd>') + '<dt>Round off</dt><dd class="num">' + money(d.round_off) + '</dd><dt><b>Invoice total</b></dt><dd class="num"><b>' + money(d.invoice_value) + '</b></dd></dl>' +
-      '<div class="form"><label class="field"><span>Invoice date</span><input type="date" id="invDate" ' + (d.order_date ? 'min="' + attr(d.order_date) + '" ' : '') + 'max="' + today() + '" value="' + today() + '"><small>Choose the date this invoice should carry (today or earlier, not before the order date ' + (d.order_date ? fdate(d.order_date) : '') + '). Number is issued automatically from the ' + esc((S.boot.company || {}).company_name) + ' series and stock is deducted.</small></label>' +
+      '<div class="form"><label class="field"><span>Invoice date</span><input type="date" id="invDate" ' + (d.order_date ? 'min="' + attr(d.order_date) + '" ' : '') + 'max="' + (S.boot.invoice_max_date || today()) + '" value="' + today() + '"><small>Choose the date this invoice should carry (today or earlier, not before the order date ' + (d.order_date ? fdate(d.order_date) : '') + '). Number is issued automatically from the ' + esc((S.boot.company || {}).company_name) + ' series and stock is deducted.</small></label>' +
       '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="invOk"' + (d.missing.length || !d.profile_ok ? ' disabled' : '') + '>Raise invoice ' + money0(d.invoice_value) + '</button></div></div>';
     openModal(html);
     $('invOk').onclick = function () {
@@ -1553,7 +1554,7 @@ VIEWS.control = function (p) {
     var act1 = { SUPPLY: ['Confirm supply', 'supply'], DISPATCH: ['Dispatch', 'dispatch'], DELIVERY: ['Record delivery', 'deliveryStop'], POD: ['Upload POD', 'pod'], INVOICE: ['Raise invoice', 'invoice'] }[stage];
     var html = head('Order control', hint + ' · ' + companyLine(), stage === 'DISPATCH' && res.rows.length && can('dispatch.create') ? '<button class="btn sm" onclick="go(\'dispatch\')">Dispatch several</button>' : '') + tabs;
     var bulk = stage === 'INVOICE' && can('invoice.create') && res.rows.length > 1;
-    html += '<div class="section">' + (bulk ? '<div class="note" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ivAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.ivSel\').forEach(function(c){c.checked=this.checked}.bind(this));bulkCount()"> Select all</label><span id="ivN" class="muted small"></span><label style="display:flex;gap:6px;align-items:center;margin-left:auto">Invoice date <input type="date" id="bulkDate" max="' + today() + '" value="' + today() + '" style="min-height:36px"></label><button class="btn" id="bulkBtn" onclick="bulkInvoice(this)">Raise invoices for selected</button></div><div class="small muted" id="bulkProg" style="margin-bottom:8px"></div>' : '') + (res.rows.length ? '<div class="rows">' + res.rows.map(function (o) {
+    html += '<div class="section">' + (bulk ? '<div class="note" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ivAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.ivSel\').forEach(function(c){c.checked=this.checked}.bind(this));bulkCount()"> Select all</label><span id="ivN" class="muted small"></span><label style="display:flex;gap:6px;align-items:center;margin-left:auto">Invoice date <input type="date" id="bulkDate" max="' + (S.boot.invoice_max_date || today()) + '" value="' + today() + '" style="min-height:36px"></label><button class="btn" id="bulkBtn" onclick="bulkInvoice(this)">Raise invoices for selected</button></div><div class="small muted" id="bulkProg" style="margin-bottom:8px"></div>' : '') + (res.rows.length ? '<div class="rows">' + res.rows.map(function (o) {
       var btn = '';
       if (act1) {
         var on = act1[1] === 'supply' ? "go('supply',{id:" + js(o.order_id) + "})" : act1[1] === 'dispatch' ? "go('dispatch',{ids:[" + js(o.order_id) + "]})" : act1[1] === 'deliveryStop' ? "go('deliveryStop',{dispatch_id:" + js(o.dispatch_id) + "})" :
@@ -2212,6 +2213,8 @@ var CONFIG_LABELS = {
   invoice_before_dispatch: ['Invoice required before dispatch', 'YES / NO'], invoice_round_off: ['Round invoice total to the rupee', 'YES / NO'],
   allow_negative_stock: ['Allow supply / invoice beyond stock', 'YES / NO'], invoice_half_page_max_lines: ['Max lines on a half-A4 invoice', 'More lines print on a full A4 page'],
   b2cl_threshold: ['B2C large threshold (₹)', 'Inter-state unregistered invoices above this go to GSTR-1 b2cl'],
+  acc_lock_date: ['Lock books up to (date)', 'Accounting vouchers on or before this date cannot be added or cancelled. Leave empty for no lock'], default_bank_ledger: ['Default bank ledger', 'UPI / cheque / RTGS receipts post to this bank ledger unless the bank name matches another bank ledger'],
+  invoice_future_days: ['Invoice may be dated up to … days ahead', 'Lets the office prepare tomorrow\'s invoices tonight (0 = today or earlier only, max 30)'],
   booking_cutoff_time: ['Booking cut-off time', 'HH:MM, e.g. 21:00'], booking_cutoff_days_before: ['Cut-off – days before delivery', 'Usually 1 (the evening before)'],
   use_schedule_cutoff: ['Use per-schedule cut-off times', 'YES / NO'], delivery_fallback: ['When a beat has no delivery schedule', 'BEAT_DAYS (beat weekdays), CONFIG_DAYS (default days below) or NONE (no delivery)'],
   default_delivery_days: ['Default delivery days', 'Used when fallback is CONFIG_DAYS, e.g. MONDAY,WEDNESDAY,FRIDAY'], calendar_days_ahead: ['Booking window (days ahead)', ''],
@@ -3547,6 +3550,223 @@ function openTripEnd(id) {
     }).then(function () { closeModal(); refresh(); }, swallow);
   };
 }
+</script>
+
+<script>
+/* =========================== V8.2 BOOKS OF ACCOUNT (Tally-style) =========================== */
+var ACC_VIEWS = {};
+var ACC_TABS = [['daybook', 'Day book'], ['voucher', 'New voucher'], ['ledgers', 'Ledgers'], ['trial', 'Trial balance'], ['pnl', 'Profit & loss'], ['bs', 'Balance sheet'], ['bank', 'Bank'], ['cheques', 'Cheques'], ['tax', 'GST & tax']];
+function accFY() { var t = today(), y = Number(t.slice(0, 4)); return (Number(t.slice(5, 7)) >= 4 ? y : y - 1) + '-04-01'; }
+function accTabs(cur) { return '<div class="tabs" style="margin-bottom:12px;overflow:auto;white-space:nowrap">' + ACC_TABS.map(function (t) { return '<button class="tab' + (t[0] === cur ? ' on active' : '') + '" onclick="go(\'accounts\',{tab:\'' + t[0] + '\'})">' + t[1] + '</button>'; }).join('') + '</div>'; }
+function accPage(tab, sub, right, body) { setMain(head('Books of account', sub, right) + accTabs(tab) + body); }
+function accRange(p, tab, extra) {
+  return '<div class="filters"><label class="field"><span>From</span><input type="date" id="acF" value="' + attr(p.from || accFY()) + '"></label><label class="field"><span>To</span><input type="date" id="acT" value="' + attr(p.to || today()) + '"></label>' + (extra || '') +
+    '<div class="actions" style="align-items:flex-end"><button class="btn sm" onclick="accGo(\'' + tab + '\')">Show</button> <button class="btn sm ghost" onclick="window.print()">Print</button></div></div>';
+}
+function accGo(tab) { go('accounts', { tab: tab, from: val('acF'), to: val('acT'), type: val('acType'), q: val('acQ') }, { replace: true }); }
+function drcr(v) { v = Number(v || 0); return v ? money(Math.abs(v)) + ' ' + (v > 0 ? 'Dr' : 'Cr') : '–'; }
+function m2(v) { return Number(v || 0) ? money(v) : '–'; }
+
+VIEWS.accounts = function (p) {
+  p = p || {}; var tab = p.tab || 'daybook';
+  if (!ACC_VIEWS[tab]) tab = 'daybook';
+  ACC_VIEWS[tab](p);
+};
+
+/* ---- day book ---- */
+ACC_VIEWS.daybook = function (p) {
+  call('getDayBook', { from: p.from || today().slice(0, 8) + '01', to: p.to || today(), type: p.type || '', q: p.q || '' }).then(function (d) {
+    S.cache.dayBook = d;
+    accPage('daybook', num(d.count) + ' vouchers · ' + money0(d.total), '',
+      accRange({ from: d.from, to: d.to }, 'daybook', '<label class="field"><span>Type</span><select id="acType">' + opts(['Sales', 'Receipt', 'Payment', 'Purchase', 'Credit Note', 'Debit Note', 'Journal', 'Contra'], p.type || '', 'All types') + '</select></label><label class="field"><span>Search</span><input id="acQ" value="' + attr(p.q || '') + '"></label>') +
+      '<div class="section"><div class="tbl-wrap"><table class="tbl"><tr><th>Date</th><th>Type</th><th>No.</th><th>Particulars</th><th class="n">Amount</th><th></th></tr>' + d.rows.map(function (r, i) {
+        return '<tr><td>' + fdate(r.date) + '</td><td>' + esc(r.type) + (r.source === 'MANUAL' ? ' <span class="tiny muted">manual</span>' : '') + '</td><td>' + esc(r.number) + '</td><td>' + esc(r.party) + '<div class="tiny muted">' + esc(r.narration) + '</div></td><td class="n">' + money(r.amount) + '</td><td><button class="btn sm quiet" onclick="accShowVoucher(' + i + ')">View</button></td></tr>';
+      }).join('') + '</table></div>' + (d.truncated ? '<div class="note small">Showing the first 1500 – narrow the dates.</div>' : '') + (d.rows.length ? '' : emptyState('No vouchers in this period')) + '</div>');
+  }, failed);
+};
+function accShowVoucher(i) {
+  var r = S.cache.dayBook.rows[i];
+  openModal('<h3>' + esc(r.type) + ' ' + esc(r.number) + '</h3><div class="note small">' + fdate(r.date) + ' · ' + esc(r.narration) + '</div><div class="tbl-wrap"><table class="tbl"><tr><th>Ledger</th><th class="n">Debit</th><th class="n">Credit</th></tr>' +
+    r.lines.map(function (l) { return '<tr><td><a href="#" onclick="closeModal();go(\'accounts\',{tab:\'ledger\',ledger:' + attr(js(l.ledger)) + '});return false">' + esc(l.ledger) + '</a></td><td class="n">' + m2(l.dr) + '</td><td class="n">' + m2(l.cr) + '</td></tr>'; }).join('') + '</table></div>' +
+    '<div class="actions end">' + (r.source === 'MANUAL' && can('acc.post') ? '<button class="btn ghost" onclick="accCancelVoucher(' + js(r.ref_id) + ')">Cancel voucher</button>' : '') + '<button class="btn" onclick="closeModal()">Close</button></div>');
+}
+function accCancelVoucher(id) { askReason('Cancel voucher', null, {}).then(function (r) { act(null, '', function () { return call('cancelVoucher', id, r.reason); }).then(function () { closeModal(); refresh(); }, swallow); }); }
+
+/* ---- voucher entry ---- */
+var AV = { lines: [] };
+ACC_VIEWS.voucher = function (p) {
+  if (!can('acc.post')) { accPage('voucher', '', '', emptyState('Not allowed', 'Your role cannot enter vouchers.')); return; }
+  call('listLedgers', {}).then(function (led) {
+    S.cache.accLedgers = led;
+    if (!AV.lines.length || p.reset) AV = { type: 'Payment', lines: [{ side: 'DR', ledger: '', amount: '' }, { side: 'CR', ledger: '', amount: '' }] };
+    accVoucherPaint();
+  }, failed);
+};
+function accVoucherPaint() {
+  var led = S.cache.accLedgers || [], dl = '<datalist id="ledgerNames">' + led.filter(function (l) { return l.status !== 'INACTIVE'; }).map(function (l) { return '<option value="' + attr(l.name) + '">' + esc(l.group) + '</option>'; }).join('') + '</datalist>';
+  var tdr = 0, tcr = 0; AV.lines.forEach(function (l) { var a = Number(l.amount || 0); if (l.side === 'DR') tdr += a; else tcr += a; });
+  accPage('voucher', 'Enter a voucher the way you do in Tally', '',
+    dl + '<div class="section"><div class="form" id="avF"><div class="grid2"><label class="field"><span>Voucher type</span><select id="avType" onchange="AV.type=this.value">' + opts(['Payment', 'Receipt', 'Contra', 'Journal', 'Sales', 'Purchase', 'Credit Note', 'Debit Note'], AV.type) + '</select></label>' +
+    '<label class="field"><span>Date</span><input type="date" id="avDate" max="' + today() + '" value="' + attr(AV.date || today()) + '"></label></div>' +
+    '<div class="tbl-wrap"><table class="tbl"><tr><th style="width:70px">Dr/Cr</th><th>Ledger</th><th class="n" style="width:140px">Amount</th><th></th></tr>' + AV.lines.map(function (l, i) {
+      return '<tr><td><select onchange="AV.lines[' + i + '].side=this.value;accVoucherPaint()">' + opts([{ value: 'DR', label: 'Dr' }, { value: 'CR', label: 'Cr' }], l.side) + '</select></td><td><input list="ledgerNames" value="' + attr(l.ledger) + '" onchange="AV.lines[' + i + '].ledger=this.value" placeholder="Type to search ledger"></td><td><input type="number" step="0.01" inputmode="decimal" value="' + attr(l.amount) + '" onchange="AV.lines[' + i + '].amount=this.value;accVoucherPaint()" style="text-align:right"></td><td>' + (AV.lines.length > 2 ? '<button class="btn sm quiet" onclick="AV.lines.splice(' + i + ',1);accVoucherPaint()">✕</button>' : '') + '</td></tr>';
+    }).join('') + '<tr><td></td><td><b>Total</b> ' + (Math.abs(tdr - tcr) < 0.005 ? '<span class="tiny" style="color:var(--good,green)">balanced</span>' : '<span class="tiny" style="color:var(--bad,#c33)">difference ' + money(Math.abs(tdr - tcr)) + '</span>') + '</td><td class="n"><b>Dr ' + money(tdr) + '<br>Cr ' + money(tcr) + '</b></td><td></td></tr></table></div>' +
+    '<button class="btn sm ghost" onclick="AV.lines.push({side:\'' + (tdr > tcr ? 'CR' : 'DR') + '\',ledger:\'\',amount:\'' + (Math.abs(tdr - tcr) > 0.004 ? Math.abs(tdr - tcr).toFixed(2) : '') + '\'});accVoucherPaint()">+ Add line</button>' +
+    '<div class="grid2"><label class="field"><span>Narration</span><input id="avNarr" value="' + attr(AV.narration || '') + '"></label><label class="field"><span>Reference / cheque no.</span><input id="avRef" value="' + attr(AV.ref || '') + '"></label></div>' +
+    '<div class="note small">Payment: credit a cash/bank ledger · Receipt: debit a cash/bank ledger · Contra: cash ↔ bank · Journal: no cash/bank. Need a new ledger? <a href="#" onclick="go(\'accounts\',{tab:\'ledgers\'});return false">Ledgers</a>.</div>' +
+    '<div class="actions end"><button class="btn" id="avOk" onclick="accSaveVoucher(this)">Save voucher</button></div></div></div>');
+}
+function accSaveVoucher(btn) {
+  AV.date = val('avDate'); AV.narration = val('avNarr'); AV.ref = val('avRef');
+  act(btn, 'Saving…', function () { return call('saveVoucher', { voucher_type: AV.type, voucher_date: AV.date, narration: AV.narration, ref_no: AV.ref, lines: AV.lines.map(function (l) { return { ledger: l.ledger, side: l.side, amount: l.amount }; }) }); }).then(function () { AV = { lines: [] }; go('accounts', { tab: 'voucher', reset: 1 }, { replace: true }); }, swallow);
+}
+
+/* ---- ledgers ---- */
+ACC_VIEWS.ledgers = function (p) {
+  Promise.all([call('listLedgers', { group: p.group || '', q: p.q || '' }), call('getAccountsMeta')]).then(function (r) {
+    S.cache.accLedgers = r[0]; S.cache.accMeta = r[1];
+    accPage('ledgers', num(r[0].length) + ' ledgers', can('acc.admin') ? '<button class="btn sm ghost" onclick="accGroupForm()">New group</button> <button class="btn sm" onclick="accLedgerForm()">New ledger</button>' : '',
+      '<div class="filters"><label class="field"><span>Group</span><select onchange="go(\'accounts\',{tab:\'ledgers\',group:this.value,q:val(\'acQ\')},{replace:true})">' + opts(r[1].groups.map(function (g) { return g.name; }), p.group || '', 'All groups') + '</select></label><label class="field"><span>Search</span><input id="acQ" value="' + attr(p.q || '') + '" onchange="go(\'accounts\',{tab:\'ledgers\',group:\'' + attr(p.group || '') + '\',q:this.value},{replace:true})"></label></div>' +
+      '<div class="section"><div class="rows">' + r[0].map(function (l, i) {
+        return '<div class="row static"><div class="m"><b><a href="#" onclick="go(\'accounts\',{tab:\'ledger\',ledger:' + attr(js(l.name)) + '});return false">' + esc(l.name) + '</a></b><span>' + esc(l.group) + (l.created ? '' : ' · from app data') + '</span></div><div class="r"><b>' + drcr(l.balance) + '</b></div>' +
+          (can('acc.admin') ? '<button class="btn sm ghost" onclick="accLedgerForm(' + i + ')">' + (l.created ? 'Edit' : 'Opening bal.') + '</button>' : '') + '</div>';
+      }).join('') + '</div></div>');
+  }, failed);
+};
+function accLedgerForm(i) {
+  var l = i == null ? { name: '', group: '', opening: 0 } : S.cache.accLedgers[i], st = l.created, groups = S.cache.accMeta.groups.map(function (g) { return g.name; });
+  openModal('<h3>' + (i == null ? 'New ledger' : st ? 'Edit ledger' : 'Opening balance – ' + esc(l.name)) + '</h3><div class="form" id="lgF"><label class="field"><span>Name <em>*</em></span><input name="ledger_name" value="' + attr(l.name) + '"' + (!st && i != null ? ' readonly' : '') + '></label>' +
+    '<label class="field"><span>Under group <em>*</em></span><select name="group_name">' + opts(groups, l.group, 'Select group') + '</select></label>' +
+    '<div class="grid2"><label class="field"><span>Opening balance</span><input name="opening_balance" type="number" step="0.01" value="' + attr(Math.abs(l.opening || 0) || '') + '"></label><label class="field"><span>Dr / Cr</span><select name="opening_type">' + opts([{ value: 'DR', label: 'Dr' }, { value: 'CR', label: 'Cr' }], (l.opening || 0) < 0 ? 'CR' : 'DR') + '</select></label></div>' +
+    '<div class="grid2"><label class="field"><span>GSTIN</span><input name="party_gstin"></label><label class="field"><span>Bank account no. / IFSC</span><input name="account_no"></label></div>' +
+    '<div class="note small">Opening stock is taken from stock records. Entries from the app (invoices, receipts, purchases…) post to ledgers automatically; opening balance applies on the Books start date (Settings).</div>' +
+    '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="lgOk">Save</button></div></div>');
+  $('lgOk').onclick = function () { var v = formVals('lgF'); if (st) v.ledger_id = l.ledger_id; act(this, 'Saving…', function () { return call('saveLedger', v); }).then(function () { closeModal(); refresh(); }, swallow); };
+}
+function accGroupForm() {
+  var groups = S.cache.accMeta.groups.map(function (g) { return g.name; });
+  openModal('<h3>New group</h3><div class="form" id="grF"><label class="field"><span>Group name</span><input name="group_name"></label><label class="field"><span>Under</span><select name="parent_group">' + opts(groups, '', 'Select') + '</select></label><div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="grOk">Create</button></div></div>');
+  $('grOk').onclick = function () { var v = formVals('grF'); act(this, 'Saving…', function () { return call('saveGroup', v); }).then(function () { closeModal(); refresh(); }, swallow); };
+}
+
+/* ---- ledger account ---- */
+ACC_VIEWS.ledger = function (p) {
+  call('getLedgerReport', p.ledger, p.from || accFY(), p.to || today()).then(function (d) {
+    accPage('ledgers', esc(d.ledger) + ' · ' + esc(d.group), '', accRange({ from: d.from, to: d.to }, 'ledger').replace("accGo('ledger')", "go('accounts',{tab:'ledger',ledger:" + attr(js(d.ledger)) + ",from:val('acF'),to:val('acT')},{replace:true})") +
+      '<div class="kpis">' + kpi('Opening', drcr(d.opening), '') + kpi('Debit', money0(d.dr), '') + kpi('Credit', money0(d.cr), '') + kpi('Closing', drcr(d.closing), '', 'sales') + '</div>' +
+      '<div class="section"><div class="tbl-wrap"><table class="tbl"><tr><th>Date</th><th>Particulars</th><th>Type</th><th>No.</th><th class="n">Debit</th><th class="n">Credit</th><th class="n">Balance</th></tr>' + d.rows.map(function (r) {
+        return '<tr><td>' + fdate(r.date) + '</td><td>' + esc(r.particulars) + '<div class="tiny muted">' + esc(r.narration) + '</div></td><td>' + esc(r.type) + '</td><td>' + esc(r.number) + '</td><td class="n">' + m2(r.dr) + '</td><td class="n">' + m2(r.cr) + '</td><td class="n">' + drcr(r.balance) + '</td></tr>';
+      }).join('') + '</table></div></div>');
+  }, failed);
+};
+
+/* ---- trial balance ---- */
+function accGroupRows(g, depth) {
+  var pad = 'padding-left:' + (8 + depth * 16) + 'px', h = '<tr style="font-weight:600;background:var(--soft,#f6f6f6)"><td style="' + pad + '">' + esc(g.name) + '</td><td class="n">' + drcr(g.opening) + '</td><td class="n">' + m2(g.dr) + '</td><td class="n">' + m2(g.cr) + '</td><td class="n">' + drcr(g.closing) + '</td></tr>';
+  g.ledgers.forEach(function (l) { h += '<tr><td style="padding-left:' + (24 + depth * 16) + 'px"><a href="#" onclick="go(\'accounts\',{tab:\'ledger\',ledger:' + attr(js(l.name)) + '});return false">' + esc(l.name) + '</a></td><td class="n">' + drcr(l.opening) + '</td><td class="n">' + m2(l.dr) + '</td><td class="n">' + m2(l.cr) + '</td><td class="n">' + drcr(l.closing) + '</td></tr>'; });
+  g.groups.forEach(function (c) { h += accGroupRows(c, depth + 1); });
+  return h;
+}
+ACC_VIEWS.trial = function (p) {
+  call('getTrialBalance', { from: p.from || accFY(), to: p.to || today() }).then(function (d) {
+    accPage('trial', d.tallied ? 'Debit and credit tally' : 'Does not tally – check opening balances', '', accRange(d, 'trial') +
+      (d.opening_difference ? '<div class="note warn small">Opening balances differ by ' + money(Math.abs(d.opening_difference)) + ' (shown as “Difference in opening balances”). Enter every opening balance (capital, loans, fixed assets, parties) under Ledgers to clear it. Opening stock ' + money(d.opening_stock) + ' comes from stock records.</div>' : '') +
+      '<div class="section"><div class="tbl-wrap"><table class="tbl"><tr><th>Particulars</th><th class="n">Opening</th><th class="n">Debit</th><th class="n">Credit</th><th class="n">Closing</th></tr>' + d.groups.map(function (g) { return accGroupRows(g, 0); }).join('') +
+      (d.opening_stock ? '<tr><td>Stock-in-hand (opening stock)</td><td class="n">' + drcr(d.opening_stock) + '</td><td></td><td></td><td class="n">' + drcr(d.opening_stock) + '</td></tr>' : '') +
+      '<tr style="font-weight:700"><td>Grand total</td><td class="n">Dr ' + money(d.totals.opening_dr) + '<br>Cr ' + money(d.totals.opening_cr) + '</td><td class="n">' + money(d.totals.dr) + '</td><td class="n">' + money(d.totals.cr) + '</td><td class="n">Dr ' + money(d.totals.closing_dr) + '<br>Cr ' + money(d.totals.closing_cr) + '</td></tr></table></div></div>');
+  }, failed);
+};
+
+/* ---- profit & loss ---- */
+function plSide(rows) { return rows.map(function (r) { return '<tr><td><a href="#" onclick="go(\'accounts\',{tab:\'ledger\',ledger:' + attr(js(r.name)) + '});return false">' + esc(r.name) + '</a></td><td class="n">' + money(r.amount) + '</td></tr>'; }).join(''); }
+ACC_VIEWS.pnl = function (p) {
+  call('getProfitLossAccount', { from: p.from || accFY(), to: p.to || today() }).then(function (d) {
+    var dTot = d.opening_stock + d.direct_expenses.reduce(function (a, x) { return a + x.amount; }, 0), cTot = d.closing_stock + d.direct_incomes.reduce(function (a, x) { return a + x.amount; }, 0);
+    accPage('pnl', (d.net >= 0 ? 'Net profit ' : 'Net loss ') + money0(Math.abs(d.net)), '', accRange(d, 'pnl') +
+      '<div class="kpis">' + kpi('Gross profit', money0(d.gross), '', d.gross < 0 ? 'bad' : 'good') + kpi('Indirect expenses', money0(d.indirect_expense_total), '') + kpi('Indirect income', money0(d.indirect_income_total), '') + kpi(d.net >= 0 ? 'Net profit' : 'Net loss', money0(Math.abs(d.net)), '', d.net >= 0 ? 'good' : 'bad') + '</div>' +
+      '<div class="section"><h3>Trading account</h3><div class="grid2"><div class="tbl-wrap"><table class="tbl"><tr><th>Dr – Particulars</th><th class="n">Amount</th></tr>' + (d.opening_stock ? '<tr><td>Opening stock</td><td class="n">' + money(d.opening_stock) + '</td></tr>' : '') + plSide(d.direct_expenses) + (d.gross > 0 ? '<tr><td><b>Gross profit c/o</b></td><td class="n"><b>' + money(d.gross) + '</b></td></tr>' : '') + '<tr><td><b>Total</b></td><td class="n"><b>' + money(Math.max(dTot, cTot)) + '</b></td></tr></table></div>' +
+      '<div class="tbl-wrap"><table class="tbl"><tr><th>Cr – Particulars</th><th class="n">Amount</th></tr>' + plSide(d.direct_incomes) + (d.closing_stock ? '<tr><td>Closing stock</td><td class="n">' + money(d.closing_stock) + '</td></tr>' : '') + (d.gross < 0 ? '<tr><td><b>Gross loss c/o</b></td><td class="n"><b>' + money(-d.gross) + '</b></td></tr>' : '') + '<tr><td><b>Total</b></td><td class="n"><b>' + money(Math.max(dTot, cTot)) + '</b></td></tr></table></div></div></div>' +
+      '<div class="section"><h3>Profit &amp; loss account</h3><div class="grid2"><div class="tbl-wrap"><table class="tbl"><tr><th>Dr – Particulars</th><th class="n">Amount</th></tr>' + (d.gross < 0 ? '<tr><td>Gross loss b/f</td><td class="n">' + money(-d.gross) + '</td></tr>' : '') + plSide(d.indirect_expenses) + (d.net > 0 ? '<tr><td><b>Net profit</b></td><td class="n"><b>' + money(d.net) + '</b></td></tr>' : '') + '</table></div>' +
+      '<div class="tbl-wrap"><table class="tbl"><tr><th>Cr – Particulars</th><th class="n">Amount</th></tr>' + (d.gross > 0 ? '<tr><td>Gross profit b/f</td><td class="n">' + money(d.gross) + '</td></tr>' : '') + plSide(d.indirect_incomes) + (d.net < 0 ? '<tr><td><b>Net loss</b></td><td class="n"><b>' + money(-d.net) + '</b></td></tr>' : '') + '</table></div></div></div>' +
+      (d.stock_tracked ? '' : '<div class="note small">Stock is not tracked in the app, so opening / closing stock are zero.</div>'));
+  }, failed);
+};
+
+/* ---- balance sheet ---- */
+function bsSide(items) { return items.map(function (x) { return '<tr style="font-weight:600"><td>' + esc(x.name) + '</td><td class="n">' + money(x.amount) + '</td></tr>' + (x.ledgers || []).map(function (l) { return '<tr><td style="padding-left:22px"><a href="#" onclick="go(\'accounts\',{tab:\'ledger\',ledger:' + attr(js(l.name)) + '});return false">' + esc(l.name) + '</a></td><td class="n tiny muted">' + money(Math.abs(l.balance)) + '</td></tr>'; }).join(''); }).join(''); }
+ACC_VIEWS.bs = function (p) {
+  call('getBalanceSheetAccount', { as_on: p.to || today() }).then(function (d) {
+    accPage('bs', 'As on ' + fdate(d.as_on) + (d.tallied ? '' : ' · does not tally'), '', '<div class="filters"><label class="field"><span>As on</span><input type="date" id="acT" value="' + attr(d.as_on) + '"></label><div class="actions" style="align-items:flex-end"><button class="btn sm" onclick="go(\'accounts\',{tab:\'bs\',to:val(\'acT\')},{replace:true})">Show</button> <button class="btn sm ghost" onclick="window.print()">Print</button></div></div>' +
+      (d.difference ? '<div class="note warn small">Difference in opening balances ' + money(Math.abs(d.difference)) + ' – enter all opening balances under Ledgers (capital, loans, assets, parties).</div>' : '') +
+      '<div class="section"><div class="grid2"><div class="tbl-wrap"><table class="tbl"><tr><th>Liabilities</th><th class="n">Amount</th></tr>' + bsSide(d.liabilities) + '<tr><td><b>Total</b></td><td class="n"><b>' + money(d.total_liabilities) + '</b></td></tr></table></div>' +
+      '<div class="tbl-wrap"><table class="tbl"><tr><th>Assets</th><th class="n">Amount</th></tr>' + bsSide(d.assets) + '<tr><td><b>Total</b></td><td class="n"><b>' + money(d.total_assets) + '</b></td></tr></table></div></div></div>');
+  }, failed);
+};
+
+/* ---- bank: reconciliation ---- */
+ACC_VIEWS.bank = function (p) {
+  call('getAccountsMeta').then(function (m) {
+    return call('listLedgers', { group: 'Bank Accounts' }).then(function (banks) {
+      var name = p.ledger || (banks[0] || {}).name;
+      if (!name) { accPage('bank', '', '', emptyState('No bank ledger yet', 'Create one under Ledgers (group “Bank Accounts”). UPI / cheque / RTGS receipts post to the default bank ledger.')); return; }
+      return call('getBankReco', name, p.to || today()).then(function (d) {
+        S.cache.reco = d;
+        accPage('bank', 'Bank reconciliation', '', '<div class="filters"><label class="field"><span>Bank</span><select onchange="go(\'accounts\',{tab:\'bank\',ledger:this.value},{replace:true})">' + opts(d.ledgers, name) + '</select></label><label class="field"><span>As on</span><input type="date" id="acT" value="' + attr(d.as_on) + '" onchange="go(\'accounts\',{tab:\'bank\',ledger:' + attr(js(name)) + ',to:this.value},{replace:true})"></label></div>' +
+          '<div class="kpis">' + kpi('Balance per books', money0(d.book_balance), '') + kpi('Not yet in bank', money0(d.uncleared_deposits - d.uncleared_withdrawals), 'deposits ' + money0(d.uncleared_deposits) + ' · cheques ' + money0(d.uncleared_withdrawals)) + kpi('Balance per bank', money0(d.balance_per_bank), 'should match your statement', 'sales') + '</div>' +
+          '<div class="section"><div class="section-head"><h3>Entries</h3><div class="actions"><label class="btn sm ghost" style="cursor:pointer">Match bank statement (CSV)<input type="file" accept=".csv,text/csv" style="display:none" onchange="accStatement(this)"></label>' + (can('acc.post') ? '<input type="date" id="rcDate" value="' + attr(d.as_on) + '" style="min-height:34px"><button class="btn sm" onclick="accReconSave(' + attr(js(name)) + ')">Mark ticked as cleared</button>' : '') + '</div></div>' +
+          '<div id="statementBox"></div><div class="tbl-wrap"><table class="tbl"><tr><th></th><th>Date</th><th>Particulars</th><th>Ref.</th><th class="n">Deposit</th><th class="n">Withdrawal</th><th>Bank date</th></tr>' + d.items.map(function (i, k) {
+            return '<tr><td>' + (can('acc.post') ? '<input type="checkbox" class="rcSel" value="' + k + '"' + (i.cleared ? ' disabled' : '') + '>' : '') + '</td><td>' + fdate(i.date) + '</td><td>' + esc(i.party) + '<div class="tiny muted">' + esc(i.type + ' ' + i.number) + '</div></td><td>' + esc(i.instrument) + '</td><td class="n">' + m2(i.deposit) + '</td><td class="n">' + m2(i.withdrawal) + '</td><td>' + (i.cleared ? fdate(i.bank_date) + (can('acc.post') ? ' <a href="#" onclick="accUnclear(' + k + ');return false" class="tiny">undo</a>' : '') : '<span class="muted">pending</span>') + '</td></tr>';
+          }).join('') + '</table></div></div>');
+      });
+    });
+  }, failed);
+};
+function accReconSave(name) {
+  var d = S.cache.reco, ids = Array.prototype.map.call(document.querySelectorAll('.rcSel:checked'), function (c) { return d.items[Number(c.value)]; });
+  if (!ids.length) return toast('Tick the entries that appear in the bank statement.', 'bad');
+  var bd = val('rcDate'); act(null, '', function () { return call('setBankDates', name, ids.map(function (i) { return { key: i.key, bank_date: bd, amount: i.deposit || i.withdrawal }; })); }).then(refresh, swallow);
+}
+function accUnclear(k) { var d = S.cache.reco, i = d.items[k]; act(null, '', function () { return call('setBankDates', d.ledger, [{ key: i.key, bank_date: '' }]); }).then(refresh, swallow); }
+function accCsv(text) {
+  var rows = text.split(/\r?\n/).map(function (l) { var out = [], cur = '', q = false; for (var i = 0; i < l.length; i++) { var c = l[i]; if (c === '"') q = !q; else if (c === ',' && !q) { out.push(cur); cur = ''; } else cur += c; } out.push(cur); return out; }).filter(function (r) { return r.length > 2; });
+  var h = rows[0].map(function (x) { return x.toLowerCase(); }), ix = function (re) { for (var i = 0; i < h.length; i++) if (re.test(h[i])) return i; return -1; };
+  var di = ix(/date/), ni = ix(/narr|desc|particular|remark/), wi = ix(/withdraw|debit|dr/), ci = ix(/deposit|credit|cr/), n = function (v) { return Number(String(v || '').replace(/[, ₹]/g, '')) || 0; };
+  var fixDate = function (s) { s = String(s || '').trim(); var m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2,4})$/); if (m) return (m[3].length === 2 ? '20' + m[3] : m[3]) + '-' + ('0' + m[2]).slice(-2) + '-' + ('0' + m[1]).slice(-2); return s; };
+  return rows.slice(1).map(function (r) { return { date: fixDate(r[di]), narration: r[ni] || '', debit: n(r[wi]), credit: n(r[ci]) }; }).filter(function (x) { return x.date && (x.debit || x.credit); });
+}
+function accStatement(inp) {
+  var f = inp.files[0]; if (!f) return; var rd = new FileReader();
+  rd.onload = function () {
+    var lines; try { lines = accCsv(String(rd.result)); } catch (e) { return showErr('Could not read this file. Use the CSV download from your bank (columns: date, narration, debit, credit).'); }
+    act(null, '', function () { return call('suggestBankMatches', S.cache.reco.ledger, lines); }).then(function (m) {
+      S.cache.stmt = m;
+      $('statementBox').innerHTML = '<div class="note small"><b>' + m.filter(function (x) { return x.match; }).length + ' of ' + m.length + ' statement lines matched.</b> Review, then confirm.</div><div class="tbl-wrap"><table class="tbl"><tr><th></th><th>Statement</th><th class="n">Debit</th><th class="n">Credit</th><th>Matched to</th></tr>' + m.map(function (x, i) { return '<tr><td>' + (x.match ? '<input type="checkbox" class="stSel" value="' + i + '" checked>' : '') + '</td><td>' + fdate(x.date) + '<div class="tiny muted">' + esc(x.narration) + '</div></td><td class="n">' + m2(x.debit) + '</td><td class="n">' + m2(x.credit) + '</td><td>' + (x.match ? esc(x.match.party + ' · ' + x.match.number) : '<span class="muted">no match</span>') + '</td></tr>'; }).join('') + '</table></div><div class="actions end"><button class="btn" onclick="accStatementApply()">Mark matched as cleared</button></div>';
+    }, swallow);
+  };
+  rd.readAsText(f);
+}
+function accStatementApply() {
+  var m = S.cache.stmt || [], sel = Array.prototype.map.call(document.querySelectorAll('.stSel:checked'), function (c) { return m[Number(c.value)]; });
+  if (!sel.length) return toast('Nothing ticked.', 'bad');
+  act(null, '', function () { return call('setBankDates', S.cache.reco.ledger, sel.map(function (x) { return { key: x.match.key, bank_date: x.date, amount: x.match.amount }; })); }).then(refresh, swallow);
+}
+
+/* ---- cheques ---- */
+ACC_VIEWS.cheques = function (p) {
+  call('getChequeRegister', { from: p.from, to: p.to }).then(function (d) {
+    accPage('cheques', 'Pending: received ' + money0(d.pending.received) + ' · issued ' + money0(d.pending.issued), '', accRange(d, 'cheques') +
+      '<div class="section"><div class="tbl-wrap"><table class="tbl"><tr><th>Date</th><th>Cheque no.</th><th>Party</th><th>Kind</th><th class="n">Amount</th><th>Status</th></tr>' + d.rows.map(function (r) { return '<tr><td>' + fdate(r.date) + '</td><td>' + esc(r.cheque_no) + '</td><td>' + esc(r.party) + '</td><td>' + r.kind + '</td><td class="n">' + money(r.amount) + '</td><td>' + chip(r.status.indexOf('Cleared') === 0 ? 'DONE' : 'PENDING', r.status) + '</td></tr>'; }).join('') + '</table></div>' + (d.rows.length ? '' : emptyState('No cheques in this period', 'Cleared status comes from Bank reconciliation.')) + '</div>');
+  }, failed);
+};
+
+/* ---- GST & tax ---- */
+ACC_VIEWS.tax = function (p) {
+  call('getTaxLedgers', { from: p.from || today().slice(0, 8) + '01', to: p.to || today() }).then(function (d) {
+    accPage('tax', 'Output tax ' + money0(d.output_tax) + ' − input credit ' + money0(d.input_credit) + ' = ' + money0(d.net_payable) + ' payable', '<button class="btn sm ghost" onclick="go(\'reports\')">GSTR-1 / 3B reports</button>', accRange(d, 'tax') +
+      '<div class="kpis">' + kpi('Output tax', money0(d.output_tax), 'collected on sales', '') + kpi('Input credit', money0(d.input_credit), 'on purchases', '') + kpi('Net payable', money0(d.net_payable), '', d.net_payable > 0 ? 'warn' : 'good') + '</div>' +
+      '<div class="section"><div class="tbl-wrap"><table class="tbl"><tr><th>Duties &amp; taxes ledger</th><th class="n">Opening</th><th class="n">Debit</th><th class="n">Credit</th><th class="n">Closing</th></tr>' + d.ledgers.map(function (l) { return '<tr><td><a href="#" onclick="go(\'accounts\',{tab:\'ledger\',ledger:' + attr(js(l.name)) + '});return false">' + esc(l.name) + '</a></td><td class="n">' + drcr(l.opening) + '</td><td class="n">' + m2(l.dr) + '</td><td class="n">' + m2(l.cr) + '</td><td class="n">' + drcr(l.closing) + '</td></tr>'; }).join('') + '</table></div><div class="note small">' + esc(d.note) + '</div></div>');
+  }, failed);
+};
 </script>
 
 </body>
