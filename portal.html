@@ -660,7 +660,7 @@ function navItems() {
     { id: 'accounts', label: 'Books of account', icon: 'finance', show: can('acc.view'), grp: 'Money' },
     { id: 'dayReport', label: 'Day closing report', icon: 'closing', show: can('dayreport.view'), grp: 'Money' },
     { id: 'billing', label: 'Invoices & notes', icon: 'order', show: can('invoice.create') || can('note.create'), grp: 'Money' },
-    { id: 'approvals', label: 'Approvals', icon: 'check', show: can('customer.approve') || can('payment.approve') || can('expense.approve') || can('beat.manage') || can('note.post'), grp: 'Money' },
+    { id: 'approvals', label: 'Approvals', icon: 'check', show: can('customer.approve') || can('payment.approve') || can('expense.approve') || can('edit.approve') || can('beat.manage') || can('note.post'), grp: 'Money' },
     { id: 'followups', label: 'Follow-ups', icon: 'call', show: can('followup.manage'), grp: 'Day' },
     { id: 'closing', label: 'Daily closing', icon: 'closing', show: can('closing.submit') || can('closing.view'), grp: 'Day' },
     { id: 'stock', label: 'Stock & purchases', icon: 'outlets', show: can('stock.view') && group() !== 'SALES', grp: 'Operations' },
@@ -832,7 +832,7 @@ function saveProfile(btn) {
     S.boot.user.name = v.name; S.boot.user.mobile = v.mobile; S.boot.user.email = v.email; paintShell();
   }, swallow);
 }
-var NOTIF_TARGET = { ENQUIRY: 'enquiries', ORDER: 'orderDetail', INVOICE: 'finance', PAYMENT: 'approvals', CUSTOMER: 'customer', DISPATCH: 'deliveries', EXPENSE: 'expenses', FOLLOW_UP: 'followups', TRANSPORT: 'transport' };
+var NOTIF_TARGET = { ENQUIRY: 'enquiries', ORDER: 'orderDetail', INVOICE: 'finance', PAYMENT: 'approvals', CUSTOMER: 'customer', DISPATCH: 'deliveries', EXPENSE: 'expenses', EDIT_REQUEST: 'approvals', FOLLOW_UP: 'followups', TRANSPORT: 'transport' };
 VIEWS.notifications = function () {
   call('listNotifications', false).then(function (list) {
     var unread = list.filter(function (n) { return n.status === 'UNREAD'; }).length;
@@ -939,7 +939,7 @@ VIEWS.customers = function (p) {
   p = p || {};
   Promise.all([call('listBeats', {}), call('listCustomers', { beat_id: p.beat_id || '', status: p.status || 'ACTIVE', with_outstanding: can('finance.view') })]).then(function (r) {
     S.cache.beats = r[0]; var rows = r[1]; S.cache.custRows = rows;
-    setMain(head('Retail outlets', num(rows.length) + ' outlets · ' + companyLine(), (can('customer.create') ? '<button class="btn sm" onclick="go(\'outletForm\',{beat_id:' + js(p.beat_id || '') + '})">New outlet</button>' : '') + (can('customer.admin') && S.boot.companies.length > 1 ? ' <button class="btn sm ghost" onclick="openCopyOutlets()">Copy to another company</button>' : '')) +
+    setMain(head('Retail outlets', num(rows.length) + ' outlets · ' + companyLine(), (can('customer.create') ? '<button class="btn sm" onclick="go(\'outletForm\',{beat_id:' + js(p.beat_id || '') + '})">New outlet</button>' : '') + (can('customer.admin') && S.boot.companies.length > 1 ? ' <button class="btn sm ghost" onclick="openCopyOutlets()">Copy to another company</button>' : '') + (can('customer.admin') ? ' <button class="btn sm ghost" onclick="repairMaps(this)">Fix map links</button>' : '')) +
       '<div class="filters"><label class="field"><span>Beat</span><select onchange="go(\'customers\',{beat_id:this.value,status:' + js(p.status || 'ACTIVE') + '},{replace:true})">' + opts(r[0], p.beat_id, 'All beats', 'beat_id', 'beat_name') + '</select></label>' +
       (can('customer.admin') ? '<label class="field"><span>Status</span><select onchange="go(\'customers\',{beat_id:' + js(p.beat_id || '') + ',status:this.value},{replace:true})">' + opts([{ value: 'ACTIVE', label: 'Active' }, { value: 'PENDING', label: 'Waiting approval' }, { value: 'INACTIVE', label: 'Inactive' }, { value: 'BLOCKED', label: 'Blocked' }, { value: 'ALL', label: 'All' }], p.status || 'ACTIVE') + '</select></label>' : '') +
       '<div class="field wide"><span>Search</span>' + searchBox('custQ', 'Name, mobile, GSTIN, area', 'filterCustomers()') + '</div></div>' +
@@ -947,8 +947,9 @@ VIEWS.customers = function (p) {
     filterCustomers();
   }, failed);
 };
+function repairMaps(btn) { if (!confirm('Clean every outlet\'s saved Google Maps link, read locations from them and fix old-style links?')) return; act(btn, 'Repairing…', function () { return call('repairMapsLinks'); }).then(function (r) { if (r.sample && r.sample.length) openModal('<h3>Map links repaired</h3><div class="note small">' + esc(r.message) + '</div><div class="rows">' + r.sample.map(function (n) { return '<div class="row static"><div class="m"><b>' + esc(n) + '</b><span>no exact location</span></div></div>'; }).join('') + '</div><div class="actions end"><button class="btn" onclick="closeModal()">OK</button></div>'); }, swallow); }
 function openCopyOutlets() {
-  var rows = S.cache.custRows || [], me = (S.boot.company || {}).company_id, others = S.boot.companies.filter(function (c) { return c.status === 'ACTIVE' && c.company_id !== me; });
+  var rows = S.cache.custRows || [], me = (S.boot.company || {}).company_id, others = S.boot.companies.filter(function (c) { return c.company_id !== me; });
   if (!others.length) { showErr('There is no other active company.'); return; }
   openModal('<h3>Copy outlets to another company</h3><div class="form" id="cpF"><div class="note small">The outlets stay in ' + companyLine() + ' too. A fresh outlet (zero balance, credit limit 0) is created in the other company; outlets already there are skipped.</div>' +
     '<label class="field"><span>Copy to company <em>*</em></span><select name="target_company_id" id="cpT">' + opts(others, '', 'Select company', 'company_id', 'company_name') + '</select></label>' +
@@ -998,7 +999,7 @@ VIEWS.customer = function (p) {
     html += '<div class="section"><h3>Details</h3><dl class="kv">' +
       [['Type', cap(c.customer_type)], ['Contact', c.contact_person], ['Mobile', c.mobile ? '<a href="tel:' + attr(c.mobile) + '">' + esc(c.mobile) + '</a>' : ''], ['Alternate', c.alternate_mobile], ['Address', c.address],
         ['Beat', c.beat_name], ['Salesman', c.salesman_name], ['GSTIN', c.gstin], ['PAN', c.pan], ['PIN', c.pin],
-        ['Location', c.google_maps_link ? '<a target="_blank" href="' + attr(c.google_maps_link) + '">Open map</a>' : ''], ['Status note', c.status_reason]]
+        ['Location', (c.maps_view || c.google_maps_link) ? '<a target="_blank" rel="noopener" href="' + attr(c.maps_view || c.google_maps_link) + '">Open map</a>' : ''], ['Status note', c.status_reason]]
         .filter(function (x) { return x[1]; }).map(function (x) { return '<dt>' + x[0] + '</dt><dd>' + ((x[0] === 'Mobile' || x[0] === 'Location') ? x[1] : esc(x[1])) + '</dd>'; }).join('') + '</dl></div>';
     if (c.open_invoices.length) html += '<div class="section"><div class="section-head"><h3>Open invoices</h3>' + (can('finance.view') ? '<button class="btn sm quiet" onclick="go(\'statement\',{id:' + js(c.customer_id) + '})">Statement</button>' : '') + '</div><div class="rows">' +
       c.open_invoices.map(function (i) { return '<div class="row static"><div class="m"><b>' + esc(i.invoice_number) + '</b><span>' + fdate(i.invoice_date) + ' · due ' + fdate(i.due_date) + (i.overdue ? ' · ' + i.age_days + ' days overdue' : '') + '</span></div><div class="r"><b>' + money(i.balance) + '</b><span class="tiny muted">of ' + money0(i.invoice_value) + '</span></div></div>'; }).join('') + '</div></div>';
@@ -1030,6 +1031,7 @@ VIEWS.outletForm = function (p) {
       '<label class="field"><span>Address</span><textarea name="address">' + esc(c.address) + '</textarea></label>' +
       '<div class="grid3"><label class="field"><span>Area <em>*</em></span><input name="area" value="' + attr(c.area) + '"></label><label class="field"><span>City</span><input name="city" value="' + attr(c.city) + '"></label><label class="field"><span>PIN</span><input name="pin" inputmode="numeric" maxlength="6" value="' + attr(c.pin) + '"></label></div>' +
       '<div class="grid3"><label class="field"><span>GSTIN</span><input name="gstin" maxlength="15" style="text-transform:uppercase" value="' + attr(c.gstin) + '"><small>Registered outlets get B2B invoices.</small></label><label class="field"><span>PAN</span><input name="pan" maxlength="10" style="text-transform:uppercase" value="' + attr(c.pan) + '"></label><label class="field"><span>State</span><select name="state_code">' + opts(L('STATES'), c.state_code || (c.gstin ? String(c.gstin).slice(0, 2) : S.boot.config.seller_state_code), undefined) + '</select></label></div>' +
+      '<label class="field"><span>Google Maps link</span><input name="google_maps_link" id="ofLink" value="' + attr(c.google_maps_link) + '" placeholder="Paste the shop link from Google Maps" onchange="outletLinkFill(this)" onpaste="setTimeout(function(){outletLinkFill($(\'ofLink\'))},50)"><small id="ofLinkMsg">Latitude and longitude fill in automatically from the link.</small></label>' +
       '<div class="grid2"><label class="field"><span>Latitude</span><input name="latitude" id="ofLat" value="' + attr(c.latitude) + '"></label><label class="field"><span>Longitude</span><input name="longitude" id="ofLng" value="' + attr(c.longitude) + '"></label></div>' +
       '<div><button class="btn sm ghost" onclick="captureGps(\'ofLat\',\'ofLng\',this)">Use my current location</button></div>';
     if (admin) html += '<div class="grid2"><label class="field"><span>Credit limit (₹)</span><input name="credit_limit" inputmode="decimal" value="' + attr(c.credit_limit || '') + '"></label><label class="field"><span>Payment terms</span><input name="payment_terms" placeholder="e.g. 15 days" value="' + attr(c.payment_terms) + '"></label></div>' +
@@ -1053,6 +1055,15 @@ function saveOutlet(btn, id) {
   act(btn, 'Saving…', function () { return id ? call('updateCustomer', id, v) : call('createCustomer', v); }).then(function (r) {
     if (id) back(); else go('customer', { id: r.customer_id }, { replace: true });
   }, swallow);
+}
+function outletLinkFill(inp) {
+  var v = String(inp.value || '').trim(), m = $('ofLinkMsg');
+  if (!v || inp._last === v) return; inp._last = v;
+  if (m) m.textContent = 'Reading location…';
+  call('resolveMapsLink', v).then(function (r) {
+    $('ofLat').value = r.latitude; $('ofLng').value = r.longitude; inp.value = r.link; inp._last = r.link;
+    if (m) { m.textContent = '✓ ' + r.message; m.style.color = ''; }
+  }, function (e) { if (m) { m.textContent = (e && e.message) || 'Could not read this link.'; m.style.color = '#b3261e'; } });
 }
 function captureGps(latId, lngId, btn) {
   if (!navigator.geolocation) return toast('Location is not available on this device.', 'bad');
@@ -1079,7 +1090,7 @@ VIEWS.order = function (p) {
     if (d.order) {
       O.salesman_id = d.order.salesman_id; O.beat_id = d.order.beat_id; O.date = d.order.requested_delivery_date || ''; O.po = d.order.customer_po; O.remarks = d.order.remarks; O.status = d.order.status; O.pay = d.order.payment_type || ''; O.shipSame = d.order.ship_same !== false && d.order.ship_same !== 'NO'; O.shipName = d.order.ship_name || ''; O.shipAddr = d.order.ship_address || ''; O.shipMobile = d.order.ship_mobile || '';
       if (O.date) O.month = O.date.slice(0, 7);
-      O.lines = d.order.lines.map(function (l) { var pr = productById(l.sku_id) || {}; return { order_line_id: l.order_line_id, sku_id: l.sku_id, label: l.product_name, qty: l.qty, rate: l.rate, reason: l.price_override_reason, retail: pr.retail_price || l.master_rate, mrp: pr.mrp || l.mrp, case_pack: pr.case_pack || l.case_pack }; });
+      O.lines = d.order.lines.map(function (l) { var pr = productById(l.sku_id) || {}; return { order_line_id: l.order_line_id, sku_id: l.sku_id, label: l.product_name, qty: l.qty, rate: l.list_rate || l.rate, disc: l.disc_pct || 0, reason: l.price_override_reason, retail: pr.retail_price || l.master_rate, mrp: pr.mrp || l.mrp, case_pack: pr.case_pack || l.case_pack }; });
       O.preCustomer = d.order.customer_id;
     }
     if (p.customer_id) O.preCustomer = p.customer_id;
@@ -1175,7 +1186,7 @@ function addOrderLine(sku) {
   var p = productById(sku); if (!p) return;
   var ex = O.lines.filter(function (l) { return l.sku_id === sku; })[0];
   if (ex) { toast(p.label + ' is already in the order – change its quantity below.'); }
-  else O.lines.push({ sku_id: sku, label: p.label_full || p.label, qty: p.case_pack || 1, rate: p.retail_price, reason: '', retail: p.retail_price, mrp: p.mrp, case_pack: p.case_pack });
+  else O.lines.push({ sku_id: sku, label: p.label_full || p.label, qty: p.case_pack || 1, rate: p.retail_price, disc: 0, reason: '', retail: p.retail_price, mrp: p.mrp, case_pack: p.case_pack });
   $('prodQ').value = ''; renderProductPicker(); renderOrderLines();
   var el = document.querySelector('#ordLines .line:last-child input'); if (el && !ex) el.focus();
 }
@@ -1187,15 +1198,16 @@ function renderOrderLines() {
       '<div class="meta">MRP ' + money(l.mrp) + ' · standard ' + money(l.retail) + (l.case_pack ? ' · ' + num(l.case_pack) + ' pcs/case' : '') + '</div>' + (stockChip(productById(l.sku_id) || {}) ? '<div style="margin:2px 0 4px">' + stockChip(productById(l.sku_id)) + '</div>' : '') +
       '<div class="qtybox"><label class="field"><span>Qty (PCS)</span><input type="number" inputmode="numeric" min="1" step="1" value="' + attr(l.qty) + '" oninput="O.lines[' + i + '].qty=this.value;lineTotals(' + i + ')"></label>' +
       '<label class="field"><span>Price / pc (₹)</span><input type="number" inputmode="decimal" min="0" step="0.01" value="' + attr(l.rate) + '" oninput="O.lines[' + i + '].rate=this.value;lineTotals(' + i + ',true)"></label></div>' +
+      (can('discount.give') ? '<div class="qtybox"><label class="field"><span>Discount % (off the price)</span><input type="number" inputmode="decimal" min="0" max="99.99" step="0.01" value="' + attr(l.disc || '') + '" placeholder="0" oninput="O.lines[' + i + '].disc=this.value;lineTotals(' + i + ')"></label></div>' : '') +
       '<div id="lnInfo' + i + '" class="small" style="margin-top:6px">' + lineInfo(l) + '</div>' +
       '<div id="lnWhy' + i + '"' + (low ? '' : ' class="hidden"') + ' style="margin-top:8px"><label class="field"><span>Reason for lower price <em>*</em></span><input value="' + attr(l.reason) + '" oninput="O.lines[' + i + '].reason=this.value" placeholder="e.g. scheme, competitor price"></label></div></div>';
   }).join('') || '<div class="muted small">Search above and tap a product to add it.</div>';
   updateOrderTotal();
 }
 function lineInfo(l) {
-  var q = Number(l.qty) || 0, r = Number(l.rate) || 0, cp = Number(l.case_pack) || 0;
+  var q = Number(l.qty) || 0, r = Number(l.rate) || 0, cp = Number(l.case_pack) || 0, dp = Number(l.disc) || 0;
   var pr = productById(l.sku_id), over = pr && pr.stock !== null && pr.stock !== undefined && q > pr.stock;
-  var t = (over ? '<span class="chip amber">Only ' + num(pr.stock) + ' pcs in stock</span> ' : '') + '<b class="num">' + money(q * r) + '</b> <span class="muted">' + num(q) + ' pcs × ' + money(r) + (cp ? ' · ' + (q / cp).toFixed(2) + ' cases' : '') + '</span>';
+  var t = (over ? '<span class="chip amber">Only ' + num(pr.stock) + ' pcs in stock</span> ' : '') + '<b class="num">' + money(q * r * (1 - dp / 100)) + '</b> <span class="muted">' + num(q) + ' pcs × ' + money(r) + (dp ? ' − ' + dp + '% = ' + money(r * (1 - dp / 100)) + '/pc' : '') + (cp ? ' · ' + (q / cp).toFixed(2) + ' cases' : '') + '</span>';
   if (r < Number(l.retail) - 0.0001) t += ' <span class="chip amber">Below standard ' + money(l.retail) + '</span>';
   else if (r > Number(l.retail) + 0.0001) t += ' <span class="chip green">Above standard</span>';
   return t;
@@ -1208,7 +1220,7 @@ function lineTotals(i, priceChanged) {
   updateOrderTotal();
 }
 function updateOrderTotal() {
-  var t = O.lines.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0); }, 0);
+  var t = O.lines.reduce(function (a, l) { return a + (Number(l.qty) || 0) * (Number(l.rate) || 0) * (1 - (Number(l.disc) || 0) / 100); }, 0);
   if ($('ordTotal')) $('ordTotal').textContent = money(t);
   if ($('ordCount')) $('ordCount').textContent = O.lines.length + ' product' + (O.lines.length === 1 ? '' : 's') + (O.date ? ' · delivery ' + fdate(O.date) : '');
 }
@@ -1249,7 +1261,7 @@ function submitOrder(btn, draft) {
   if (!draft && !O.pay) return toast('Select Cash & carry or Credit.', 'bad');
   if (!draft && !O.shipSame && (!String(O.shipName || '').trim() || !String(O.shipAddr || '').trim())) return toast('Ship To is different: enter the ship-to name and address.', 'bad');
   var payload = { order_id: O.edit, customer_id: O.customer.customer_id, salesman_id: O.salesman_id, beat_id: O.beat_id, requested_delivery_date: O.date, order_date: isBackDated() ? O.orderDate : '', customer_po: O.po, remarks: O.remarks, payment_type: O.pay, ship_same: !!O.shipSame, ship_name: O.shipName, ship_address: O.shipAddr, ship_mobile: O.shipMobile, draft: !!draft,
-    lines: O.lines.map(function (l) { return { order_line_id: l.order_line_id || '', sku_id: l.sku_id, qty: Number(l.qty), rate: Number(l.rate), price_override_reason: l.reason || '' }; }) };
+    lines: O.lines.map(function (l) { return { order_line_id: l.order_line_id || '', sku_id: l.sku_id, qty: Number(l.qty), rate: Number(l.rate), disc_pct: Number(l.disc) || 0, price_override_reason: l.reason || '' }; }) };
   act(btn, draft ? 'Saving draft…' : 'Submitting…', function () { return call(O.edit ? 'updateOrder' : 'createOrder', payload); }).then(function (r) {
     S.cache.calendar = null; go('orderDetail', { id: r.order_id }, { replace: true });
   }, swallow);
@@ -1313,7 +1325,7 @@ VIEWS.orderDetail = function (p) {
       (o.backorder_of ? '<dt>Backorder of</dt><dd><button class="link" onclick="go(\'orderDetail\',{id:' + js(o.backorder_of) + '})">' + esc(o.backorder_of) + '</button></dd>' : '') + (d.header.remarks ? '<dt>Remarks</dt><dd>' + esc(d.header.remarks) + '</dd>' : '') +
       (o.cancel_reason ? '<dt>Cancelled</dt><dd>' + esc(o.cancel_reason) + '</dd>' : '') + '<dt>Revision</dt><dd>' + d.header.revision + '</dd></dl></div>';
     html += '<div class="section"><h3>Products</h3><div class="tbl-wrap"><table class="tbl"><tr><th>Product</th><th class="n">Ordered</th><th class="n">Price</th><th class="n">Supplied</th><th class="n">Delivered</th><th class="n">Value</th></tr>' +
-      d.lines.map(function (l) { return '<tr' + (l.removed ? ' style="opacity:.5;text-decoration:line-through"' : '') + '><td>' + esc(l.product_name) + (l.price_override_reason ? '<div class="tiny muted">Price note: ' + esc(l.price_override_reason) + '</div>' : '') + (l.short_reason ? '<div class="tiny" style="color:#8A5A00">Short: ' + esc(l.short_reason) + '</div>' : '') + (l.removed ? '<div class="tiny">removed</div>' : '') + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + money(l.rate) + '</td><td class="n">' + (l.supplied_qty === '' ? '–' : num(l.supplied_qty)) + '</td><td class="n">' + (l.delivered_qty === '' ? '–' : num(l.delivered_qty)) + '</td><td class="n">' + money(l.line_value) + '</td></tr>'; }).join('') + '</table></div></div>';
+      d.lines.map(function (l) { return '<tr' + (l.removed ? ' style="opacity:.5;text-decoration:line-through"' : '') + '><td>' + esc(l.product_name) + (l.price_override_reason ? '<div class="tiny muted">Price note: ' + esc(l.price_override_reason) + '</div>' : '') + (l.short_reason ? '<div class="tiny" style="color:#8A5A00">Short: ' + esc(l.short_reason) + '</div>' : '') + (l.removed ? '<div class="tiny">removed</div>' : '') + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + money(l.disc_pct ? l.list_rate : l.rate) + (l.disc_pct ? '<div class="tiny muted">− ' + l.disc_pct + '% disc</div>' : '') + '</td><td class="n">' + (l.supplied_qty === '' ? '–' : num(l.supplied_qty)) + '</td><td class="n">' + (l.delivered_qty === '' ? '–' : num(l.delivered_qty)) + '</td><td class="n">' + money(l.line_value) + '</td></tr>'; }).join('') + '</table></div></div>';
     if (d.exceptions.length) html += '<div class="section"><h3>Exceptions</h3><div class="rows">' + d.exceptions.map(function (e) { return '<div class="row static"><div class="m"><b style="white-space:normal">' + esc(cap(e.type)) + ' · ' + esc(cap(e.reason)) + (e.short_qty ? ' · ' + num(e.short_qty) + ' pcs' : '') + '</b><span style="white-space:normal">' + esc([e.explanation, e.owner ? 'Owner ' + e.owner : '', e.expected_resolution_date ? 'by ' + fdate(e.expected_resolution_date) : '', e.next_action ? 'Next: ' + cap(e.next_action) : '', e.backorder_order_id ? 'Backorder ' + e.backorder_order_id : ''].filter(Boolean).join(' · ')) + '</span></div>' + chip(e.status) + '</div>'; }).join('') + '</div></div>';
     if (d.dispatches.length || d.deliveries.length) html += '<div class="section"><h3>Dispatch &amp; delivery</h3><div class="rows">' +
       d.dispatches.map(function (x) { return '<div class="row static"><div class="m"><b>Dispatch ' + fdate(x.dispatch_date) + '</b><span>' + esc([x.vehicle, x.driver_name, x.route, num(x.cases) + ' cases'].filter(Boolean).join(' · ')) + '</span></div>' + chip(x.status) + '</div>'; }).join('') +
@@ -1387,7 +1399,8 @@ VIEWS.dispatch = function (p) {
       d.orders.map(function (o) { return '<label class="row"><input type="checkbox" style="width:20px;height:20px;min-height:0" value="' + attr(o.order_id) + '"' + (pre.indexOf(o.order_id) >= 0 || (!pre.length && d.orders.length === 1) ? ' checked' : '') + '><div class="m"><b>' + esc(o.customer_name) + '</b><span>' + esc([o.area, o.beat_name, 'delivery ' + fdate(o.requested_delivery_date)].join(' · ')) + '</span></div><div class="r"><b>' + money(o.supplied_value || o.order_value) + '</b>' + chip(o.status, o.status_label) + '</div></label>'; }).join('') + '</div></div>';
     html += '<div class="section"><div class="form" id="dForm"><div class="grid2"><label class="field"><span>Transport</span><select name="transport_mode">' + opts([{ value: 'OWN', label: 'Own vehicle' }, { value: 'HIRED', label: 'Hired transport' }], 'OWN') + '</select></label>' +
       '<label class="field"><span>Vehicle</span><select name="vehicle_id" onchange="var v=(S.cache.dv||[]).filter(function(x){return x.vehicle_id===this.value},this)[0];if(v&&v.driver_id)$(\'dDriver\').value=v.driver_id">' + opts(d.vehicles, '', 'Select vehicle', 'vehicle_id', 'label') + '</select></label></div>' +
-      '<div class="grid2"><label class="field"><span>Delivery person / driver <em>*</em></span><select name="driver_id" id="dDriver">' + opts(d.drivers, '', 'Select person', 'user_id', 'name') + '</select>' + (d.drivers.length ? '' : '<small>No delivery person has access to this company. Add one in Admin → Users.</small>') + '</label>' +
+      '<div class="grid2"><label class="field"><span>Driver <em>*</em></span><select name="driver_id" id="dDriver">' + opts(d.drivers, '', 'Select person', 'user_id', 'name') + '</select>' + (d.drivers.length ? '' : '<small>No delivery person has access to this company. Add one in Admin → Users.</small>') + '</label>' +
+      '<label class="field"><span>Helper / delivery man (optional)</span><select name="helper_id" id="dHelper">' + opts(d.drivers, '', 'No helper', 'user_id', 'name') + '</select><small>Both can see the deliveries, deliver and collect payment.</small></label></div><div class="grid2">' +
       '<label class="field"><span>Expected delivery</span><input type="date" name="expected_delivery_date"></label></div><label class="field"><span>Route</span><input name="route" placeholder="e.g. East loop"></label><label class="field"><span>Remarks</span><input name="remarks"></label></div></div>' +
       '<div class="sticky-actions"><button class="btn ghost" onclick="back()">Cancel</button><button class="btn" style="flex:1" onclick="saveDispatch(this)">Dispatch selected</button></div>';
     S.cache.dv = d.vehicles;
@@ -1422,7 +1435,7 @@ function deliveryRows(rows) {
   if (!rows.length) return emptyState('Nothing here', '');
   return '<div class="rows">' + rows.map(function (r) {
     var action = r.stage === 'TO_DELIVER' ? '<button class="btn sm" onclick="event.stopPropagation();go(\'deliveryStop\',{dispatch_id:' + js(r.dispatch_id) + '})">Deliver</button>' : '<button class="btn sm" onclick="event.stopPropagation();openPodUpload(' + js(r.delivery_id) + ',' + js(r.order_id) + ')">Upload POD</button>';
-    return '<div class="row static"><div class="m"><b>' + esc(r.customer_name) + '</b><span>' + esc(r.address) + '</span><span class="tiny">' + esc([fdate(r.expected_delivery_date), r.vehicle, r.route, money0(r.dispatch_value)].filter(Boolean).join(' · ')) +
+    return '<div class="row static"><div class="m"><b>' + esc(r.customer_name) + '</b><span>' + esc(r.address) + '</span><span class="tiny">' + esc([fdate(r.expected_delivery_date), r.vehicle, r.crew && r.helper_name ? r.crew : '', r.route, money0(r.dispatch_value)].filter(Boolean).join(' · ')) +
       (r.mobile ? ' · <a href="tel:' + attr(r.mobile) + '">Call</a>' : '') + (r.maps ? ' · <a target="_blank" href="' + attr(r.maps) + '">Map</a>' : '') + '</span></div><div class="r">' + action + '</div></div>';
   }).join('') + '</div>';
 }
@@ -1436,7 +1449,7 @@ VIEWS.deliveryStop = function (p) {
       (j.contact_person ? '<span>Contact: ' + esc(j.contact_person) + '</span>' : '<span class="muted">No contact person saved</span>') +
       '<span>' + (j.address ? esc(j.address) : '<span class="muted">No address saved</span>') + (j.pin ? ' – ' + esc(j.pin) : '') + '</span>' +
       '<span class="tiny">' + (j.mobile ? 'Mobile <a href="tel:' + attr(j.mobile) + '">' + esc(j.mobile) + '</a>' : '') + (j.alt_mobile ? ' · Alt <a href="tel:' + attr(j.alt_mobile) + '">' + esc(j.alt_mobile) + '</a>' : '') + '</span></div></div></div>' +
-      '<div class="actions" style="margin-top:10px">' + (j.maps ? '<a class="btn" data-ext="1" style="flex:1" target="_blank" rel="noopener" href="' + attr(j.maps) + '">📍 Open in Google Maps</a>' : '') +
+      '<div class="actions" style="margin-top:10px">' + (j.maps ? '<a class="btn" data-ext="1" style="flex:1" target="_blank" rel="noopener" href="' + attr(j.maps) + '">📍 Open in Google Maps</a>' + (j.navigate ? '<a class="btn ghost" data-ext="1" style="flex:1" target="_blank" rel="noopener" href="' + attr(j.navigate) + '">🧭 Navigate</a>' : '') : '') +
       (j.mobile ? '<a class="btn ghost" href="tel:' + attr(j.mobile) + '">📞 Call</a>' : '') + '</div>' +
       '<div class="small muted" style="margin-top:6px">' + (j.has_pin || j.maps_saved ? 'Using the saved location of this outlet.' : 'No exact location saved – Maps will search by name and address. Use “Save my location here” once you reach the shop.') + '</div></div>';
     html += '<div class="section"><div class="section-head"><h3>Update outlet details</h3><span class="muted small">Keeps our records accurate</span></div><div class="form" id="stF">' +
@@ -1520,8 +1533,8 @@ function openInvoiceForm(orderId) {
     var html = '<h3>Raise GST invoice</h3>' + (!d.profile_ok ? '<div class="note bad" style="margin-bottom:10px">Your GSTIN / address is not set. Admin centre → Business profile.</div>' : '') +
       (d.missing.length ? '<div class="note bad" style="margin-bottom:10px">Fix in Product Master first: ' + esc(d.missing.join(', ')) + '</div>' : '') +
       '<div class="small" style="margin-bottom:8px"><b>' + esc(d.customer_name) + '</b> · ' + (d.customer_gstin ? 'GSTIN ' + esc(d.customer_gstin) : 'Unregistered (B2C)') + ' · place of supply ' + esc(d.place_of_supply) + (d.payment_terms ? ' · terms ' + esc(d.payment_terms) : '') + '</div>' +
-      '<div class="tbl-wrap" style="margin-bottom:10px"><table class="tbl"><tr><th>Product</th><th>HSN</th><th class="n">Qty</th><th class="n">Rate incl.</th><th class="n">GST</th><th class="n">Taxable</th>' + gstCols + '<th class="n">Amount</th></tr>' +
-      d.lines.map(function (l) { return '<tr><td>' + esc(l.product_name) + '</td><td>' + esc(l.hsn) + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + money(l.rate_incl) + '</td><td class="n">' + l.gst_rate + '%</td><td class="n">' + money(l.taxable) + '</td>' + (d.inter_state ? '<td class="n">' + money(l.igst) + '</td>' : '<td class="n">' + money(l.cgst) + '</td><td class="n">' + money(l.sgst) + '</td>') + '<td class="n">' + money(l.gross) + '</td></tr>'; }).join('') +
+      '<div class="tbl-wrap" style="margin-bottom:10px"><table class="tbl"><tr><th>Product</th><th>HSN</th><th class="n">Qty</th><th class="n">Rate incl.</th>' + (d.lines.some(function (l) { return l.disc_pct; }) ? '<th class="n">Disc %</th>' : '') + '<th class="n">GST</th><th class="n">Taxable</th>' + gstCols + '<th class="n">Amount</th></tr>' +
+      d.lines.map(function (l) { return '<tr><td>' + esc(l.product_name) + '</td><td>' + esc(l.hsn) + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + money(l.rate_incl) + '</td>' + (d.lines.some(function (x) { return x.disc_pct; }) ? '<td class="n">' + (l.disc_pct ? l.disc_pct + '%' : '') + '</td>' : '') + '<td class="n">' + l.gst_rate + '%</td><td class="n">' + money(l.taxable) + '</td>' + (d.inter_state ? '<td class="n">' + money(l.igst) + '</td>' : '<td class="n">' + money(l.cgst) + '</td><td class="n">' + money(l.sgst) + '</td>') + '<td class="n">' + money(l.gross) + '</td></tr>'; }).join('') +
       '</table></div><dl class="kv" style="margin-bottom:10px"><dt>Taxable value</dt><dd class="num">' + money(d.taxable_value) + '</dd>' + (d.inter_state ? '<dt>IGST</dt><dd class="num">' + money(d.igst) + '</dd>' : '<dt>CGST</dt><dd class="num">' + money(d.cgst) + '</dd><dt>SGST</dt><dd class="num">' + money(d.sgst) + '</dd>') + '<dt>Round off</dt><dd class="num">' + money(d.round_off) + '</dd><dt><b>Invoice total</b></dt><dd class="num"><b>' + money(d.invoice_value) + '</b></dd></dl>' +
       '<div class="form"><label class="field"><span>Invoice date</span><input type="date" id="invDate" ' + (d.order_date ? 'min="' + attr(d.order_date) + '" ' : '') + 'max="' + (S.boot.invoice_max_date || today()) + '" value="' + today() + '"><small>Choose the date this invoice should carry (today or earlier, not before the order date ' + (d.order_date ? fdate(d.order_date) : '') + '). Number is issued automatically from the ' + esc((S.boot.company || {}).company_name) + ' series and stock is deducted.</small></label>' +
       '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="invOk"' + (d.missing.length || !d.profile_ok ? ' disabled' : '') + '>Raise invoice ' + money0(d.invoice_value) + '</button></div></div>';
@@ -1552,7 +1565,7 @@ VIEWS.control = function (p) {
   }
   call('listOrders', { stage: stage }).then(function (res) {
     var act1 = { SUPPLY: ['Confirm supply', 'supply'], DISPATCH: ['Dispatch', 'dispatch'], DELIVERY: ['Record delivery', 'deliveryStop'], POD: ['Upload POD', 'pod'], INVOICE: ['Raise invoice', 'invoice'] }[stage];
-    var html = head('Order control', hint + ' · ' + companyLine(), stage === 'DISPATCH' && res.rows.length && can('dispatch.create') ? '<button class="btn sm" onclick="go(\'dispatch\')">Dispatch several</button>' : '') + tabs;
+    var html = head('Order control', hint + ' · ' + companyLine(), (stage === 'DISPATCH' && res.rows.length && can('dispatch.create') ? '<button class="btn sm" onclick="go(\'dispatch\')">Dispatch several</button>' : '') + (stage === 'DELIVERY' && can('dispatch.create') ? ' <button class="btn sm ghost" onclick="openRedate()">Change dispatch / delivery date</button>' : '')) + tabs;
     var bulk = stage === 'INVOICE' && can('invoice.create') && res.rows.length > 1;
     html += '<div class="section">' + (bulk ? '<div class="note" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ivAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.ivSel\').forEach(function(c){c.checked=this.checked}.bind(this));bulkCount()"> Select all</label><span id="ivN" class="muted small"></span><label style="display:flex;gap:6px;align-items:center;margin-left:auto">Invoice date <input type="date" id="bulkDate" max="' + (S.boot.invoice_max_date || today()) + '" value="' + today() + '" style="min-height:36px"></label><button class="btn" id="bulkBtn" onclick="bulkInvoice(this)">Raise invoices for selected</button></div><div class="small muted" id="bulkProg" style="margin-bottom:8px"></div>' : '') + (res.rows.length ? '<div class="rows">' + res.rows.map(function (o) {
       var btn = '';
@@ -1567,6 +1580,22 @@ VIEWS.control = function (p) {
     setMain(html);
   }, failed);
 };
+function openRedate() {
+  var d0 = '';
+  call('listOpenDispatches', {}).then(function (r) {
+    S.cache.redate = r.rows;
+    openModal('<h3>Change dispatch / delivery date</h3><div class="note small">For loads that were planned for one day but left on another. Only deliveries not yet recorded can be changed. Orders moved to a new delivery date follow it.</div><div class="form" id="rdF">' +
+      '<div class="grid2"><label class="field"><span>New dispatch date</span><input type="date" name="dispatch_date" max="' + today() + '" value="' + today() + '"></label><label class="field"><span>New delivery date</span><input type="date" name="expected_delivery_date" value="' + today() + '"></label></div>' +
+      '<label class="field"><span>Reason <em>*</em></span><input name="reason" placeholder="e.g. Delivery man was absent – loaded next day"></label>' +
+      '<div class="field"><span>Dispatches (' + r.count + ')</span><input class="search" placeholder="Search…" oninput="rdFilter(this.value)"><div id="rdL" style="max-height:240px;overflow:auto;border:1px solid var(--line,#ddd);border-radius:8px;padding:6px">' +
+      r.rows.map(function (x) { return '<label class="check" data-q="' + attr((x.customer_name + ' ' + x.dispatch_date + ' ' + x.crew).toLowerCase()) + '"><input type="checkbox" name="dispatch_ids" data-multi="1" value="' + attr(x.dispatch_id) + '"> ' + esc(x.customer_name) + ' <small class="muted">' + esc(['dispatched ' + fdate(x.dispatch_date), 'delivery ' + fdate(x.expected_delivery_date), x.crew, money0(x.value)].filter(Boolean).join(' · ')) + '</small></label>'; }).join('') + '</div>' +
+      '<div><button type="button" class="btn sm quiet" onclick="rdAll(true)">Select shown</button> <button type="button" class="btn sm quiet" onclick="rdAll(false)">Clear</button></div></div>' +
+      '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="rdOk">Apply new dates</button></div></div>');
+    $('rdOk').onclick = function () { var v = formVals('rdF'); act(this, 'Saving…', function () { return call('redateDispatches', v); }).then(function () { closeModal(); refresh(); }, swallow); };
+  }, failed);
+}
+function rdFilter(q) { q = q.toLowerCase(); $('rdL').querySelectorAll('label').forEach(function (l) { l.style.display = !q || l.getAttribute('data-q').indexOf(q) >= 0 ? '' : 'none'; }); }
+function rdAll(on) { $('rdL').querySelectorAll('label').forEach(function (l) { if (l.style.display !== 'none') l.querySelector('input').checked = on; }); }
 function bulkCount() { var n = document.querySelectorAll('.ivSel:checked').length; if ($('ivN')) $('ivN').textContent = n ? n + ' selected' : ''; }
 function bulkInvoice(btn) {
   var ids = Array.prototype.map.call(document.querySelectorAll('.ivSel:checked'), function (c) { return c.value; }), date = val('bulkDate');
@@ -1650,7 +1679,7 @@ function saveCollection(btn, confirmDup) {
   var v = formVals('colForm'); v.customer_id = S.cache.coll.customer_id; v.confirm_duplicate = !!confirmDup;
   if (v.payment_nature !== 'AGAINST INVOICE') v.invoice_id = '';
   act(btn, 'Saving…', function () { return readFile('colProof').then(function (f) { if (f) { v.proof_base64 = f.data; v.proof_file_name = f.name; v.proof_mime_type = f.mime; } return call('recordCollection', v); }); })
-    .then(function () { go('collect', {}, { replace: true }); }, function (e) {
+    .then(function (r) { go('collect', {}, { replace: true }); if (r && r.payment_id) openPaymentAdvice(r.payment_id, true); }, function (e) {
       if (/^DUPLICATE_REFERENCE/.test(e.message) && confirm(e.message.replace(/^DUPLICATE_REFERENCE:\s*/, '') + '\n\nSave anyway?')) saveCollection(btn, true);
     });
 }
@@ -1749,7 +1778,7 @@ VIEWS.expenses = function (p) {
       '<div class="kpis">' + kpi('Total', money0(r.total), num(r.rows.length) + ' entries', 'warn') + cats.slice(0, 3).map(function (c) { return kpi(cap(c), money0(r.by_category[c]), ''); }).join('') + '</div>' +
       '<div class="section">' + (r.rows.length ? '<div class="rows">' + r.rows.map(function (e) {
         return '<div class="row static"><div class="m"><b>' + esc(cap(e.category)) + ' · ' + esc(e.employee) + '</b><span style="white-space:normal">' + esc(fdate(e.date) + ' · ' + e.description + (e.vehicle ? ' · ' + e.vehicle : '') + (e.rejection_reason ? ' · ' + e.rejection_reason : '')) + '</span></div><div class="r"><b>' + money(e.amount) + '</b>' + chip(e.status) +
-          '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (e.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(e.proof) + '">Bill</a>' : '') + (can('expense.approve') && e.status === 'PENDING' && e.employee_id !== S.boot.user.user_id ? '<button class="btn sm ok" onclick="approveExpenseUi(' + js(e.expense_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveExpenseUi(' + js(e.expense_id) + ',false)">Reject</button>' : '') + '</div></div></div>';
+          '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (e.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(e.proof) + '">Bill</a>' : '') + (can('expense.approve') && e.status === 'PENDING' && e.employee_id !== S.boot.user.user_id ? '<button class="btn sm ok" onclick="approveExpenseUi(' + js(e.expense_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveExpenseUi(' + js(e.expense_id) + ',false)">Reject</button>' : '') + (e.status !== 'REJECTED' ? '<button class="btn sm ghost" onclick="openEditRecord(\'EXPENSE\',' + js(e.expense_id).replace(/"/g, '&quot;') + ')">Edit</button>' : '') + '</div></div></div>';
       }).join('') + '</div>' : emptyState('No expenses this month', '', '<button class="btn sm" onclick="openExpenseForm()">Add expense</button>')) + '</div>');
     loadAdvanceBox();
   }, failed);
@@ -1782,7 +1811,7 @@ VIEWS.vehicles = function (p) {
     if (f.summary.length) html += '<div class="section"><h3>By vehicle</h3><div class="tbl-wrap"><table class="tbl"><tr><th>Vehicle</th><th class="n">KM</th><th class="n">Litres</th><th class="n">Cost</th><th class="n">KM/L</th><th class="n">₹/KM</th></tr>' + f.summary.map(function (s) { return '<tr><td>' + esc(s.vehicle) + '</td><td class="n">' + num(s.km) + '</td><td class="n">' + num(s.litres) + '</td><td class="n">' + money0(s.amount) + '</td><td class="n">' + s.km_per_litre + '</td><td class="n">' + money(s.cost_per_km) + '</td></tr>'; }).join('') + '</table></div></div>';
     html += '<div class="section"><h3>Vehicles</h3>' + (vs.length ? '<div class="rows">' + vs.map(function (v) { return '<div class="row static"><div class="m"><b>' + esc(v.vehicle_number) + '</b><span>' + esc([cap(v.vehicle_type), cap(v.ownership), v.driver_name].filter(Boolean).join(' · ')) + '</span></div>' + chip(v.status) + (can('vehicle.manage') ? '<button class="btn sm ghost" onclick="openVehicleForm(' + js(v.vehicle_id) + ')">Edit</button>' : '') + '</div>'; }).join('') + '</div>' : emptyState('No vehicles yet', can('vehicle.manage') ? 'Add your delivery vehicles to track dispatch and fuel.' : '')) + '</div>';
     if (group() !== 'DELIVERY') html += tripsSection(trips);
-    html += '<div class="section"><h3>Fuel log</h3>' + (f.rows.length ? '<div class="rows">' + f.rows.map(function (x) { return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · ' + num(x.litres) + ' L</b><span>' + esc(fdate(x.fuel_date) + ' · ' + x.opening_km + '→' + x.closing_km + ' km · ' + x.km_per_litre + ' km/L · ₹' + x.cost_per_km + '/km' + (x.station ? ' · ' + x.station : '') + ' · ' + x.driver) + '</span></div><div class="r"><b>' + money(x.amount) + '</b>' + (x.receipt ? '<a class="tiny" target="_blank" href="' + attr(x.receipt) + '">Receipt</a>' : '') + '</div></div>'; }).join('') + '</div>' : emptyState('No fuel entries this month', '')) + '</div>';
+    html += '<div class="section"><h3>Fuel log</h3>' + (f.rows.length ? '<div class="rows">' + f.rows.map(function (x) { return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · ' + num(x.litres) + ' L</b><span>' + esc(fdate(x.fuel_date) + ' · ' + x.opening_km + '→' + x.closing_km + ' km · ' + x.km_per_litre + ' km/L · ₹' + x.cost_per_km + '/km' + (x.station ? ' · ' + x.station : '') + ' · ' + x.driver) + '</span></div><div class="r"><b>' + money(x.amount) + '</b>' + (x.receipt ? '<a class="tiny" target="_blank" href="' + attr(x.receipt) + '">Receipt</a>' : '') + '<div><button class="btn sm ghost" onclick="openEditRecord(\'FUEL\',' + js(x.fuel_id).replace(/"/g, '&quot;') + ')">Edit</button></div></div></div>'; }).join('') + '</div>' : emptyState('No fuel entries this month', '')) + '</div>';
     setMain(html);
   }, failed);
 };
@@ -1825,7 +1854,7 @@ VIEWS.transport = function (p) {
       '<div class="kpis">' + kpi('Transport cost', money0(r.total), num(r.rows.length) + ' bills', 'warn') + '</div>' +
       '<div class="section">' + (r.rows.length ? '<div class="rows">' + r.rows.map(function (t) {
         return '<div class="row static"><div class="m"><b>' + esc(t.transporter) + ' · ' + esc(t.vehicle_number) + '</b><span>' + esc([fdate(t.date), t.route, t.driver, t.order_ids].filter(Boolean).join(' · ')) + '</span><span class="tiny">Freight ' + money0(t.freight) + ' · loading ' + money0(t.loading) + ' · unloading ' + money0(t.unloading) + ' · waiting ' + money0(t.waiting) + '</span></div><div class="r"><b>' + money(t.total_cost) + '</b>' + chip(t.status) +
-          '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (t.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(t.proof) + '">Bill</a>' : '') + (can('transport.approve') && t.status === 'PENDING' ? '<button class="btn sm ok" onclick="approveTransportUi(' + js(t.transport_id) + ',true)">Approve</button>' : '') + '</div></div></div>';
+          '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (t.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(t.proof) + '">Bill</a>' : '') + (can('transport.approve') && t.status === 'PENDING' ? '<button class="btn sm ok" onclick="approveTransportUi(' + js(t.transport_id) + ',true)">Approve</button>' : '') + (t.status !== 'REJECTED' ? '<button class="btn sm ghost" onclick="openEditRecord(\'TRANSPORT\',' + js(t.transport_id).replace(/"/g, '&quot;') + ')">Edit</button>' : '') + '</div></div></div>';
       }).join('') + '</div>' : emptyState('No hired transport this month', '')) + '</div>');
   }, failed);
 };
@@ -1843,6 +1872,42 @@ function openTransportForm() {
   };
 }
 function trCalc() { var v = formVals('trF'); $('trTot').textContent = money(['freight', 'loading', 'unloading', 'waiting'].reduce(function (a, k) { return a + (Number(v[k]) || 0); }, 0)); }
+/* =========================== EDIT A RECORD (V8.3) ===========================
+   Admin: saved at once.  Everyone else: sent to Admin for approval. */
+function openEditRecord(entity, id) {
+  call('getEditForm', entity, id).then(function (f) {
+    var v = f.values, e = entity;
+    var needVeh = e !== 'TRANSPORT', needUsers = e === 'TRIP';
+    Promise.all([needVeh ? call('listVehicles') : Promise.resolve([]), needUsers ? call('listDeliveryUsers').catch(function () { return []; }) : Promise.resolve([])]).then(function (r) {
+      var vs = r[0], us = r[1], row = function (a, b) { return '<div class="grid2">' + a + (b || '') + '</div>'; };
+      var fld = function (label, name, type, extra) { return '<label class="field"><span>' + label + '</span><input name="' + name + '"' + (type ? ' type="' + type + '"' : '') + (type === 'number' ? ' step="0.01" inputmode="decimal"' : '') + ' value="' + attr(v[name]) + '"' + (extra || '') + '></label>'; };
+      var dt = function (name, label) { return fld(label || 'Date', name, 'date', ' max="' + f.max_date + '"'); };
+      var vsel = function (blank) { return '<label class="field"><span>Vehicle</span><select name="vehicle_id">' + opts(vs, v.vehicle_id, blank || 'Select vehicle', 'vehicle_id', 'vehicle_number') + '</select></label>'; };
+      var body = '';
+      if (e === 'FUEL') body = row(vsel(), dt('fuel_date')) + row(fld('Opening KM', 'opening_km', 'number'), fld('Closing KM', 'closing_km', 'number')) + row(fld('Litres', 'litres', 'number'), fld('Amount (₹)', 'fuel_amount', 'number')) +
+        row(fld('Fuel station', 'fuel_station'), '<label class="field"><span>Paid by</span><select name="payment_mode">' + opts(['CASH', 'UPI', 'CARD', 'FUEL CARD', 'COMPANY ACCOUNT'], v.payment_mode) + '</select></label>') + fld('Purpose / trip', 'purpose');
+      else if (e === 'TRIP') body = row(vsel(), dt('trip_date')) + '<label class="field"><span>Driver</span><select name="driver_id">' + opts(us, v.driver_id, 'Select driver', 'user_id', 'name') + '</select></label>' +
+        row(fld('Start KM', 'start_km', 'number'), f.status === 'CLOSED' ? fld('End KM', 'end_km', 'number') : '') + row(fld('Start note', 'start_note'), f.status === 'CLOSED' ? fld('End note', 'end_note') : '');
+      else if (e === 'TRANSPORT') body = row(dt('transport_date'), fld('Transporter', 'transporter')) + row(fld('Vehicle number', 'vehicle_number', '', ' style="text-transform:uppercase"'), fld('Driver', 'driver')) + row(fld('Route', 'route'), fld('Order IDs', 'order_ids')) +
+        row(fld('Freight (₹)', 'freight', 'number'), fld('Loading (₹)', 'loading', 'number')) + row(fld('Unloading (₹)', 'unloading', 'number'), fld('Waiting (₹)', 'waiting', 'number')) + fld('Reason for hiring', 'reason');
+      else body = row(dt('expense_date'), '<label class="field"><span>Category</span><select name="category">' + opts(f.categories, v.category) + '</select></label>') +
+        row(fld('Amount (₹)', 'amount', 'number'), '<label class="field"><span>Paid by</span><select name="payment_mode">' + opts(['CASH', 'UPI', 'CARD', 'COMPANY ACCOUNT'], v.payment_mode) + '</select></label>') + fld('Description', 'description') +
+        row(vsel('Not vehicle related'), fld('Order ID', 'order_id'));
+      var note = f.pending ? '<div class="note warn small">A change for this entry is already waiting for Admin.</div>' : (f.direct ? '<div class="note small">You are Admin – the change is saved straight away and recorded in the audit trail.</div>' : '<div class="note small">Your change goes to Admin for approval. The entry stays as it is until it is approved.</div>');
+      openModal('<h3>Edit ' + esc(f.label.toLowerCase()) + '</h3><div class="form" id="edF">' + note + body +
+        '<label class="field"><span>Reason for the change' + (f.direct ? '' : ' <em>*</em>') + '</span><input name="_reason" placeholder="e.g. wrong KM typed"></label>' +
+        '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="edOk"' + (f.pending ? ' disabled' : '') + '>' + (f.direct ? 'Save changes' : 'Send for approval') + '</button></div></div>');
+      $('edOk').onclick = function () {
+        var x = formVals('edF'), reason = x._reason; delete x._reason;
+        act(this, 'Saving…', function () { return call('editRecord', entity, id, x, reason); }).then(function () { closeModal(); refresh(); }, swallow);
+      };
+    }, showErr);
+  }, showErr);
+}
+function decideEditUi(id, ok) {
+  if (ok) return act(null, '', function () { return call('decideEditRequest', id, true, ''); }).then(refresh, swallow);
+  askReason('Reject change', null, { danger: true, okLabel: 'Reject' }).then(function (r) { act(null, '', function () { return call('decideEditRequest', id, false, r.reason); }).then(refresh, swallow); });
+}
 </script>
 
 <script>
@@ -1879,6 +1944,7 @@ VIEWS.finance = function (p) {
         var tools = '';
         if (can('payment.approve') && pm.approval_status === 'PENDING') tools += '<button class="btn sm ok" onclick="approvePaymentUi(' + js(pm.payment_id) + ',true)">Verify</button><button class="btn sm danger" onclick="approvePaymentUi(' + js(pm.payment_id) + ',false)">Reject</button>';
         if (can('payment.allocate') && pm.unallocated > 0) tools += '<button class="btn sm" onclick="openAllocation(' + js(pm.payment_id) + ')">Allocate</button>';
+        if (pm.approval_status !== 'REJECTED') tools += '<button class="btn sm ghost" onclick="openPaymentAdvice(' + js(pm.payment_id) + ')">Advice</button>';
         if (pm.proof) tools += '<a class="btn sm ghost" target="_blank" href="' + attr(pm.proof) + '">Proof</a>';
         if (can('payment.allocate') && pm.allocated > 0) tools += '<button class="btn sm ghost" onclick="openAllocation(' + js(pm.payment_id) + ')">Details</button>';
         return paymentRow(pm).replace('</div></div>', '</div>' + (tools ? '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + tools + '</div>' : '') + '</div>');
@@ -1951,12 +2017,14 @@ VIEWS.approvals = function () {
     can('expense.approve') ? call('listExpenses', { status: 'PENDING', month: 'ALL' }) : Promise.resolve({ rows: [] }),
     can('transport.approve') ? call('listTransport', { status: 'PENDING', month: 'ALL' }) : Promise.resolve({ rows: [] }),
     can('beat.manage') ? call('listPendingBeats') : Promise.resolve([]),
-    can('note.post') ? call('listNotes', { status: 'DRAFT' }) : Promise.resolve({ rows: [] })
+    can('note.post') ? call('listNotes', { status: 'DRAFT' }) : Promise.resolve({ rows: [] }),
+    can('edit.approve') ? call('listEditRequests', { status: 'PENDING' }) : Promise.resolve({ rows: [] })
   ];
   Promise.all(jobs).then(function (r) {
-    var outlets = r[0], pays = r[1].rows, adjs = r[2], exps = r[3].rows, trs = r[4].rows, beats = r[5], notes = r[6].rows;
-    var total = outlets.length + pays.length + adjs.length + exps.length + trs.length + beats.length + notes.length;
+    var outlets = r[0], pays = r[1].rows, adjs = r[2], exps = r[3].rows, trs = r[4].rows, beats = r[5], notes = r[6].rows, edits = r[7].rows;
+    var total = edits.length + outlets.length + pays.length + adjs.length + exps.length + trs.length + beats.length + notes.length;
     var html = head('Approvals', total ? num(total) + ' waiting · ' + companyLine() : 'Nothing waiting · ' + companyLine());
+    if (can('edit.approve')) html += '<div class="section"><h3>Changes to entries (trip, fuel, transport, expense)</h3>' + (edits.length ? '<div class="rows">' + edits.map(function (q) { return '<div class="row static"><div class="m"><b>' + esc(cap(q.entity) + ' ' + q.record_id) + ' · by ' + esc(q.requested_by) + '</b><span style="white-space:normal">' + q.changes.map(function (c) { return esc(cap(c.field.replace(/_/g, ' '))) + ': <s>' + esc(c.from) + '</s> → <b>' + esc(c.to) + '</b>'; }).join(' · ') + '</span><span class="tiny">Reason: ' + esc(q.reason) + ' · ' + esc(fdate(q.requested_at)) + '</span></div><div class="actions"><button class="btn sm ok" onclick="decideEditUi(' + js(q.request_id) + ',true)">Approve</button><button class="btn sm danger" onclick="decideEditUi(' + js(q.request_id) + ',false)">Reject</button></div></div>'; }).join('') + '</div>' : emptyState('No changes waiting', '')) + '</div>';
     if (can('customer.approve')) html += '<div class="section"><h3>New retail outlets</h3>' + (outlets.length ? '<div class="rows">' + outlets.map(function (c) { return '<div class="row static"><div class="m"><b>' + esc(c.customer_name) + '</b><span>' + esc([c.area, c.beat_name, c.salesman_name, c.mobile].filter(Boolean).join(' · ')) + '</span></div><div class="actions"><button class="btn sm ghost" onclick="go(\'customer\',{id:' + js(c.customer_id) + '})">View</button><button class="btn sm ok" onclick="approveOutlet(' + js(c.customer_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveOutlet(' + js(c.customer_id) + ',false)">Reject</button></div></div>'; }).join('') + '</div>' : emptyState('No outlets waiting', '')) + '</div>';
     if (can('beat.manage')) html += '<div class="section"><h3>New beats</h3>' + (beats.length ? '<div class="rows">' + beats.map(function (b) { return '<div class="row static"><div class="m"><b>' + esc(b.beat_name) + '</b><span>' + esc([b.salesman_name, b.territory, b.days.map(function (d) { return cap(d).slice(0, 3); }).join(' '), b.route_sequence, fdate(b.created_at)].filter(Boolean).join(' · ')) + '</span></div><div class="actions"><button class="btn sm ok" onclick="approveBeatUi(' + js(b.beat_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveBeatUi(' + js(b.beat_id) + ',false)">Reject</button></div></div>'; }).join('') + '</div>' : emptyState('No beats waiting', '')) + '</div>';
     if (can('note.post') && notes.length) html += '<div class="section"><h3>Credit / debit notes to post</h3><div class="rows">' + notes.map(function (n) { return '<div class="row static"><div class="m"><b>' + esc(n.customer_name) + ' · ' + money(n.note_value) + '</b><span>' + esc([cap(n.note_type) + ' note', n.invoice_number, cap(n.reason_type), fdate(n.note_date)].filter(Boolean).join(' · ')) + '</span></div><div class="actions"><button class="btn sm ghost" onclick="openNoteDetail(' + js(n.note_id) + ')">Open</button></div></div>'; }).join('') + '</div></div>';
@@ -2214,6 +2282,7 @@ var CONFIG_LABELS = {
   allow_negative_stock: ['Allow supply / invoice beyond stock', 'YES / NO'], invoice_half_page_max_lines: ['Max lines on a half-A4 invoice', 'More lines print on a full A4 page'],
   b2cl_threshold: ['B2C large threshold (₹)', 'Inter-state unregistered invoices above this go to GSTR-1 b2cl'],
   acc_lock_date: ['Lock books up to (date)', 'Accounting vouchers on or before this date cannot be added or cancelled. Leave empty for no lock'], default_bank_ledger: ['Default bank ledger', 'UPI / cheque / RTGS receipts post to this bank ledger unless the bank name matches another bank ledger'],
+  max_discount_pct: ['Highest line discount % staff may give', 'Admin can give any discount; everyone else is limited to this % (0 = only Admin gives discounts)'],
   invoice_future_days: ['Invoice may be dated up to … days ahead', 'Lets the office prepare tomorrow\'s invoices tonight (0 = today or earlier only, max 30)'],
   booking_cutoff_time: ['Booking cut-off time', 'HH:MM, e.g. 21:00'], booking_cutoff_days_before: ['Cut-off – days before delivery', 'Usually 1 (the evening before)'],
   use_schedule_cutoff: ['Use per-schedule cut-off times', 'YES / NO'], delivery_fallback: ['When a beat has no delivery schedule', 'BEAT_DAYS (beat weekdays), CONFIG_DAYS (default days below) or NONE (no delivery)'],
@@ -2340,7 +2409,7 @@ VIEWS.billing = function (p) {
   var tabs = [['invoices', 'Invoices'], ['credit', 'Credit notes'], ['debit', 'Debit notes'], ['drafts', 'Drafts']];
   var tabHtml = '<div class="tabs">' + tabs.map(function (t) { return '<button class="' + (t[0] === p.tab ? 'on' : '') + '" onclick="go(\'billing\',{tab:\'' + t[0] + '\'},{replace:true})">' + t[1] + '</button>'; }).join('') + '</div>';
   var dates = '<div class="filters" id="blF"><label class="field"><span>From</span><input type="date" name="from" value="' + attr(p.from) + '"></label><label class="field"><span>To</span><input type="date" name="to" value="' + attr(p.to) + '"></label><label class="field"><span>Search</span><input name="q" value="' + attr(p.q || '') + '" placeholder="Number, outlet"></label><div class="actions" style="align-items:flex-end"><button class="btn" onclick="var v=formVals(\'blF\');v.tab=' + js(p.tab).replace(/"/g, '&quot;') + ';go(\'billing\',v,{replace:true})">Apply</button></div></div>';
-  var top = '<div class="actions" style="margin-bottom:12px">' + (can('invoice.print') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="printSelectedInvoices()">Print selected</button>' : '') + (can('outlet.report') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="routeSheet(this)">Route sheet (Excel) for selected</button>' : '') + (can('invoice.create') ? '<button class="btn" onclick="go(\'control\',{stage:\'INVOICE\'})">Orders to invoice</button>' : '') + '</div>';
+  var top = '<div class="actions" style="margin-bottom:12px">' + (can('invoice.print') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="printSelectedInvoices()">Print selected</button>' : '') + (can('invoice.cancel') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="openGstFix()">Fix GST on invoices</button>' : '') + (can('outlet.report') && p.tab === 'invoices' ? '<button class="btn ghost" onclick="routeSheet(this)">Route sheet (Excel) for selected</button>' : '') + (can('invoice.create') ? '<button class="btn" onclick="go(\'control\',{stage:\'INVOICE\'})">Orders to invoice</button>' : '') + '</div>';
   if (p.tab === 'invoices') {
     call('listInvoices', { status: 'ALL', from: p.from, to: p.to, q: p.q || '' }).then(function (r) {
       var rows = r.rows.slice().sort(function (a, b) { return String(b.invoice_number).localeCompare(String(a.invoice_number)); });
@@ -2421,14 +2490,14 @@ function routeSheet(btn) {
       return loadSheetJs().then(function (XLSX) {
         var head = ['S.No', 'Customer Name', 'Mobile No', 'Area', 'Location of retail outlet', 'Salesman Name', 'Invoice No', 'Invoice Date', 'Invoice Value', 'Route / Day (fill)', 'Visit order (fill)'];
         var aoa = [head].concat(r.rows.map(function (x, i) { return [i + 1, x.customer_name, x.mobile, x.area, x.location, x.salesman_name, x.invoice_number, x.invoice_date, x.invoice_value, '', '']; }));
-        var ws = XLSX.utils.aoa_to_sheet(aoa);
+        var ws = linkifySheet(XLSX, XLSX.utils.aoa_to_sheet(aoa));
         ws['!cols'] = [6, 30, 14, 18, 48, 18, 16, 12, 12, 16, 14].map(function (w) { return { wch: w }; });
         r.rows.forEach(function (x, i) { if (x.location) { var c = ws['E' + (i + 2)]; if (c) c.l = { Target: x.location, Tooltip: 'Open in Google Maps' }; } });
         var seen = {}, uniq = [['Customer Name', 'Mobile No', 'Area', 'Location of retail outlet', 'Salesman Name', 'Address', 'Route / Day (fill)', 'Visit order (fill)']];
         r.rows.forEach(function (x) { var k = x.customer_name + '|' + x.mobile; if (seen[k]) return; seen[k] = 1; uniq.push([x.customer_name, x.mobile, x.area, x.location, x.salesman_name, x.address, '', '']); });
         var wb = XLSX.utils.book_new();
-        XLSX.utils.book_append_sheet(wb, ws, 'Invoices'); XLSX.utils.book_append_sheet(wb, XLSX.utils.aoa_to_sheet(uniq), 'Outlets (unique)');
-        XLSX.writeFile(wb, r.file_name);
+        XLSX.utils.book_append_sheet(wb, ws, 'Invoices'); XLSX.utils.book_append_sheet(wb, linkifySheet(XLSX, XLSX.utils.aoa_to_sheet(uniq)), 'Outlets (unique)');
+        saveWorkbook(XLSX, wb, r.file_name);
         return { message: '✓ ' + r.file_name + ' downloaded – ' + r.count + ' invoices, ' + (uniq.length - 1) + ' outlets. Edit it freely for route mapping.' };
       });
     });
@@ -2543,6 +2612,22 @@ function printDoc(type, id, mode) {
     render();
     if ($('pdfDrive')) $('pdfDrive').onclick = function () { act(this, 'Saving…', function () { return call('saveDocumentPdf', type, id, st.mode); }).then(function (r) { if (r && r.url) viewFile(r.url, 'Saved file'); }, swallow); };
   }, showErr);
+}
+/* Admin: make CGST = SGST on invoices / notes already raised (gross never changes) */
+function openGstFix() {
+  openModal('<h3>Fix GST on raised invoices</h3><div class="form" id="gfF"><div class="note small">Finds invoices and notes with a wrong GST rate (for example 0.05% instead of 5%) or unequal CGST / SGST, and corrects them. The amount the customer pays, payments and balances do not change – an odd paisa moves into the taxable value, as on all new invoices. If the month\'s GSTR-1 is already filed, correct it through an amendment.</div>' +
+    '<div class="grid2"><label class="field"><span>From</span><input type="date" name="from" value="' + attr(monthStart()) + '"></label><label class="field"><span>To</span><input type="date" name="to" value="' + attr(today()) + '"></label></div>' +
+    '<div id="gfOut"></div><div class="actions end"><button class="btn ghost" onclick="closeModal()">Close</button><button class="btn ghost" id="gfPg">Repair product GST</button><button class="btn ghost" id="gfChk">Check</button><button class="btn" id="gfApply" disabled>Apply fix</button></div></div>');
+  var run = function (apply, btn) {
+    var v = formVals('gfF');
+    return act(btn, apply ? 'Fixing…' : 'Checking…', function () { return call('fixGstSplit', { from: v.from, to: v.to, apply: apply }); }).then(function (r) {
+      $('gfOut').innerHTML = '<div class="note small">' + esc(r.message) + '</div>' + (r.rows.length ? '<div class="tbl-wrap"><table class="tbl"><tr><th>Document</th><th>Date</th><th class="n">GST now</th><th class="n">GST after</th></tr>' + r.rows.map(function (x) { return '<tr><td>' + esc(x.kind + ' ' + x.number) + '<div class="tiny muted">' + esc(x.customer) + ' · ' + esc(x.note) + '</div></td><td>' + fdate(x.date) + '</td><td class="n">' + money(x.before.cgst + x.before.sgst + x.before.igst) + '</td><td class="n">' + money(x.after.cgst + x.after.sgst + x.after.igst) + '</td></tr>'; }).join('') + '</table></div>' : '');
+      $('gfApply').disabled = apply || !r.count; if (apply) refresh();
+    }, swallow);
+  };
+  $('gfPg').onclick = function () { var b = this; act(b, 'Repairing…', function () { return call('repairProductGst'); }); };
+  $('gfChk').onclick = function () { run(false, this); };
+  $('gfApply').onclick = function () { run(true, this); };
 }
 </script>
 
@@ -2764,12 +2849,31 @@ function drawReport() {
 function loadSheetJs() {
   if (window.XLSX) return Promise.resolve(window.XLSX);
   return new Promise(function (resolve, reject) {
-    var s = document.createElement('script');
-    s.src = 'https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js';
-    s.onload = function () { resolve(window.XLSX); };
-    s.onerror = function () { reject(new Error('Could not load the Excel library. Check the internet connection, or use "Save to Drive".')); };
-    document.head.appendChild(s);
+    var urls = ['https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js', 'https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js'], i = 0;
+    (function next() {
+      if (i >= urls.length) return reject(new Error('Could not load the Excel library. Check the internet connection, or use "Save to Drive".'));
+      var s = document.createElement('script'); s.src = urls[i++];
+      s.onload = function () { window.XLSX ? resolve(window.XLSX) : next(); };
+      s.onerror = function () { s.remove(); next(); };
+      document.head.appendChild(s);
+    })();
   });
+}
+/* every http(s) cell becomes a real clickable hyperlink (plain text links do not open from Excel) */
+function linkifySheet(XLSX, ws) {
+  if (!ws['!ref']) return ws;
+  var rg = XLSX.utils.decode_range(ws['!ref']);
+  for (var R = rg.s.r; R <= rg.e.r; R++) for (var C = rg.s.c; C <= rg.e.c; C++) {
+    var c = ws[XLSX.utils.encode_cell({ r: R, c: C })];
+    if (c && typeof c.v === 'string') { var m = c.v.match(/^\s*(https?:\/\/\S+)\s*$/i); if (m) { c.v = m[1]; c.t = 's'; c.l = { Target: m[1], Tooltip: 'Open' }; } }
+  }
+  return ws;
+}
+/* saves the workbook; if the browser blocks the normal download, falls back to a Blob link */
+function saveWorkbook(XLSX, wb, name) {
+  try { XLSX.writeFile(wb, name); return; } catch (e) {}
+  var out = XLSX.write(wb, { bookType: 'xlsx', type: 'array' }), blob = new Blob([out], { type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+  var u = URL.createObjectURL(blob), a = document.createElement('a'); a.href = u; a.download = name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 2000);
 }
 function reportWorkbook(XLSX, r) {
   var wb = XLSX.utils.book_new(), gst = r.id === 'gstr1' || r.id === 'hsn_summary' || !!r.plain;
@@ -2778,7 +2882,7 @@ function reportWorkbook(XLSX, r) {
     aoa.push(sh.columns.map(function (c) { return c.label; }));
     sh.rows.forEach(function (row) { aoa.push(sh.columns.map(function (c) { var v = row[c.key]; return v === undefined || v === null ? '' : v; })); });
     if (sh.totals && !gst) aoa.push(sh.columns.map(function (c, k) { return k === 0 ? 'Total' : (sh.totals[c.key] === undefined ? '' : sh.totals[c.key]); }));
-    var ws = XLSX.utils.aoa_to_sheet(aoa);
+    var ws = linkifySheet(XLSX, XLSX.utils.aoa_to_sheet(aoa));
     ws['!cols'] = sh.columns.map(function (c) { return { wch: Math.min(40, Math.max(10, c.label.length + 2)) }; });
     XLSX.utils.book_append_sheet(wb, ws, sh.name.slice(0, 31));
   });
@@ -2789,7 +2893,7 @@ function downloadReport(btn) {
   act(btn, 'Preparing…', function () {
     return loadSheetJs().then(function (XLSX) {
       var name = (r.title + ' ' + r.company + ' ' + r.period).replace(/[^\w\- ]+/g, ' ').replace(/\s+/g, '_').slice(0, 90) + '.xlsx';
-      XLSX.writeFile(reportWorkbook(XLSX, r), name);
+      saveWorkbook(XLSX, reportWorkbook(XLSX, r), name);
       return { message: '✓ ' + name + ' downloaded.' };
     });
   }).catch(swallow);
@@ -2916,7 +3020,7 @@ function d2cLock(btn, date, early) {
 function d2cDownload(btn, date, who) {
   act(btn, 'Preparing…', function () {
     return call('d2cExport', date, false, who || 'COMPANY').then(function (r) {
-      return loadSheetJs().then(function (XLSX) { XLSX.writeFile(reportWorkbook(XLSX, r), r.file_name); return { message: '✓ ' + r.file_name + ' downloaded' + (who === 'OWN' ? ' – for our delivery team.' : ' – send it to the company.') }; });
+      return loadSheetJs().then(function (XLSX) { saveWorkbook(XLSX, reportWorkbook(XLSX, r), r.file_name); return { message: '✓ ' + r.file_name + ' downloaded' + (who === 'OWN' ? ' – for our delivery team.' : ' – send it to the company.') }; });
     });
   }).then(function () { refresh(); }, swallow);
 }
@@ -3510,12 +3614,12 @@ function tripsSection(t) {
   if (!t) return '';
   var html = '<div class="section"><div class="section-head"><h3>Trips (start / end KM)</h3><button class="btn sm" onclick="openTripStart()">Start trip</button></div>';
   html += t.open.length ? '<div class="rows">' + t.open.map(function (x) {
-    return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · running</b><span>' + esc(x.driver_name) + ' · started ' + esc(fdate(x.trip_date)) + ' ' + esc(x.start_time) + ' at ' + num(x.start_km) + ' km</span></div><div class="r"><button class="btn sm danger" onclick="openTripEnd(' + js(x.trip_id) + ')">End trip</button></div></div>';
+    return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · running</b><span>' + esc(x.driver_name) + ' · started ' + esc(fdate(x.trip_date)) + ' ' + esc(x.start_time) + ' at ' + num(x.start_km) + ' km</span></div><div class="r"><button class="btn sm danger" onclick="openTripEnd(' + js(x.trip_id) + ')">End trip</button> <button class="btn sm ghost" onclick="openEditRecord(\'TRIP\',' + js(x.trip_id) + ')">Edit</button></div></div>';
   }).join('') + '</div>' : '<div class="note small">No trip running. Tap “Start trip” and enter the odometer reading before you leave.</div>';
   if (t.summary.length) html += '<div class="tbl-wrap" style="margin-top:8px"><table class="tbl"><tr><th>Vehicle (this month)</th><th class="n">Trips</th><th class="n">KM run</th></tr>' + t.summary.map(function (s) { return '<tr><td>' + esc(s.vehicle) + '</td><td class="n">' + num(s.trips) + '</td><td class="n">' + num(s.km) + '</td></tr>'; }).join('') + '</table></div>';
   var done = t.rows.filter(function (x) { return x.status === 'CLOSED'; }).slice(0, 30);
   if (done.length) html += '<div class="rows" style="margin-top:8px">' + done.map(function (x) {
-    return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · ' + num(x.km) + ' km</b><span>' + esc(fdate(x.trip_date)) + ' · ' + esc(x.driver_name) + ' · ' + num(x.start_km) + ' → ' + num(x.end_km) + ' km · ' + esc(x.start_time) + '–' + esc(x.end_time) + '</span></div></div>';
+    return '<div class="row static"><div class="m"><b>' + esc(x.vehicle) + ' · ' + num(x.km) + ' km</b><span>' + esc(fdate(x.trip_date)) + ' · ' + esc(x.driver_name) + ' · ' + num(x.start_km) + ' → ' + num(x.end_km) + ' km · ' + esc(x.start_time) + '–' + esc(x.end_time) + '</span></div><div class="r"><button class="btn sm ghost" onclick="openEditRecord(\'TRIP\',' + js(x.trip_id) + ')">Edit</button></div></div>';
   }).join('') + '</div>';
   return html + '</div>';
 }
@@ -3549,6 +3653,33 @@ function openTripEnd(id) {
       });
     }).then(function () { closeModal(); refresh(); }, swallow);
   };
+}
+
+/* =========================== V8.2 PAYMENT ADVICE =========================== */
+function openPaymentAdvice(paymentId, justSaved) {
+  call('getPaymentAdvice', paymentId).then(function (a) {
+    S.cache.advice = a;
+    openModal('<h3>' + (justSaved ? '✓ Payment saved – ' : '') + 'Payment advice</h3><div class="note small" style="margin-bottom:8px">Give the customer proof of payment: send the PDF on WhatsApp, save it, or print.</div>' +
+      '<div style="border:1px solid var(--line);border-radius:8px;overflow:auto;max-height:52vh;background:#fff;padding:4mm"><div id="paBox" style="width:194mm">' + a.html + '</div></div>' +
+      '<div class="actions end" style="margin-top:12px;flex-wrap:wrap"><button class="btn ghost" onclick="closeModal()">' + (justSaved ? 'Skip' : 'Close') + '</button><button class="btn ghost" id="paPrint">Print</button><button class="btn ghost" id="paDl">Save PDF</button><button class="btn" id="paWa">Send on WhatsApp</button></div>');
+    var box = $('paBox'); if (box) { var w = box.parentNode.clientWidth - 20; if (w > 0 && w < 735) box.style.zoom = (w / 735).toFixed(3); }
+    $('paPrint').onclick = function () { $('printArea').innerHTML = a.html; $('pageStyle').textContent = '@page { size: A4 portrait; margin: 8mm; }'; var old = document.title; document.title = a.file_name; var back = function () { document.title = old; window.removeEventListener('afterprint', back); }; window.addEventListener('afterprint', back); setTimeout(function () { window.print(); }, 50); };
+    $('paDl').onclick = function () { adviceFile(this, 'download'); };
+    $('paWa').onclick = function () { adviceFile(this, 'share'); };
+  }, showErr);
+}
+function adviceFile(btn, how) {
+  var id = S.cache.advice.payment_id;
+  act(btn, 'Preparing PDF…', function () { return call('getPaymentAdvicePdf', id); }).then(function (r) {
+    fetch(r.data_url).then(function (x) { return x.blob(); }).then(function (b) {
+      var file; try { file = new File([b], r.name, { type: 'application/pdf' }); } catch (e) { file = null; }
+      var download = function () { var u = URL.createObjectURL(b), a = document.createElement('a'); a.href = u; a.download = r.name; document.body.appendChild(a); a.click(); setTimeout(function () { URL.revokeObjectURL(u); a.remove(); }, 1500); };
+      if (how === 'download') { download(); return; }
+      if (file && navigator.canShare && navigator.canShare({ files: [file] })) { navigator.share({ files: [file], title: r.name, text: r.message }).catch(function () {}); return; }
+      download(); window.open(r.whatsapp_url, '_blank');
+      toast('PDF saved – attach it in the WhatsApp chat that just opened.');
+    });
+  }, swallow);
 }
 </script>
 
