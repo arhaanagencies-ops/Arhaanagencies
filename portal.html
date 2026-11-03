@@ -425,6 +425,14 @@ function $(id) { return document.getElementById(id); }
 function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); }
 function attr(v) { return esc(v); }
 function js(v) { return esc(JSON.stringify(v == null ? '' : v)); }
+/* V9.5 units: 650 pcs (case 600, jar 50) -> "1 case + 1 jar" */
+function uomText(qty, jar, cas) {
+  var q = Math.floor(Number(qty) || 0), u = [{ n: Number(cas) || 0, a: 'case', b: 'cases' }, { n: Number(jar) || 0, a: 'jar', b: 'jars' }].filter(function (x) { return x.n > 0; }).sort(function (a, b) { return b.n - a.n; });
+  if (!u.length || q < u[u.length - 1].n) return '';
+  var parts = []; u.forEach(function (x) { var k = Math.floor(q / x.n); if (k > 0) { parts.push(k + ' ' + (k === 1 ? x.a : x.b)); q -= k * x.n; } });
+  if (q > 0) parts.push(q + ' pcs');
+  return parts.join(' + ');
+}
 function money(v) { var n = Number(v || 0); return '₹' + n.toLocaleString('en-IN', { minimumFractionDigits: 2, maximumFractionDigits: 2 }); }
 function money0(v) { var n = Number(v || 0); return '₹' + n.toLocaleString('en-IN', { maximumFractionDigits: 0 }); }
 function num(v) { return Number(v || 0).toLocaleString('en-IN'); }
@@ -669,6 +677,7 @@ function navItems() {
     { id: 'vehicles', label: 'Vehicles & fuel', icon: 'fuel', show: can('vehicle.view'), grp: 'Operations' },
     { id: 'transport', label: 'Hired transport', icon: 'route', show: can('transport.record'), grp: 'Operations' },
     { id: 'enquiries', label: 'Website enquiries', icon: 'call', show: can('enquiry.view'), grp: 'Setup' },
+    { id: 'group', label: 'Group view (all companies)', icon: 'finance', show: can('admin.users') && (S.boot.companies || []).length > 1, grp: 'Setup' },
     { id: 'admin', label: 'Admin centre', icon: 'admin', show: can('admin.users'), grp: 'Setup' },
     { id: 'profile', label: 'My profile', icon: 'user', show: true, grp: 'Setup' }
   ];
@@ -676,7 +685,7 @@ function navItems() {
 }
 function bottomIds() {
   return ({ SALES: ['home', 'order', 'customers', 'collect'], MANAGEMENT: ['home', 'orders', 'control', 'billing'], ACCOUNTS: ['home', 'control', 'billing', 'finance'],
-    OPERATIONS: ['home', 'control', 'orders', 'deliveries'], DELIVERY: ['home', 'deliveries', 'vehicles', 'expenses'], CLERK: ['home', 'order', 'collect', 'billing'], PARTNER: ['d2cDeliver', 'profile'] })[group()] || ['home'];
+    OPERATIONS: ['home', 'control', 'orders', 'deliveries'], DELIVERY: ['home', 'deliveries', 'collect', 'expenses'], CLERK: ['home', 'order', 'collect', 'billing'], PARTNER: ['d2cDeliver', 'profile'] })[group()] || ['home'];
 }
 function paintShell() {
   var b = S.boot, c = b.company || {};
@@ -1090,7 +1099,7 @@ VIEWS.order = function (p) {
     if (d.order) {
       O.salesman_id = d.order.salesman_id; O.beat_id = d.order.beat_id; O.date = d.order.requested_delivery_date || ''; O.po = d.order.customer_po; O.remarks = d.order.remarks; O.status = d.order.status; O.pay = d.order.payment_type || ''; O.shipSame = d.order.ship_same !== false && d.order.ship_same !== 'NO'; O.shipName = d.order.ship_name || ''; O.shipAddr = d.order.ship_address || ''; O.shipMobile = d.order.ship_mobile || '';
       if (O.date) O.month = O.date.slice(0, 7);
-      O.lines = d.order.lines.map(function (l) { var pr = productById(l.sku_id) || {}; return { order_line_id: l.order_line_id, sku_id: l.sku_id, label: l.product_name, qty: l.qty, rate: l.list_rate || l.rate, disc: l.disc_pct || 0, reason: l.price_override_reason, retail: pr.retail_price || l.master_rate, mrp: pr.mrp || l.mrp, case_pack: pr.case_pack || l.case_pack }; });
+      O.lines = d.order.lines.map(function (l) { var pr = productById(l.sku_id) || {}; return { order_line_id: l.order_line_id, sku_id: l.sku_id, label: l.product_name, qty: l.qty, rate: l.list_rate || l.rate, disc: l.disc_pct || 0, reason: l.price_override_reason, retail: pr.retail_price || l.master_rate, mrp: pr.mrp || l.mrp, case_pack: pr.case_pack || l.case_pack, jar_pack: pr.jar_pack || l.jar_pack }; });
       O.preCustomer = d.order.customer_id;
     }
     if (p.customer_id) O.preCustomer = p.customer_id;
@@ -1186,7 +1195,7 @@ function addOrderLine(sku) {
   var p = productById(sku); if (!p) return;
   var ex = O.lines.filter(function (l) { return l.sku_id === sku; })[0];
   if (ex) { toast(p.label + ' is already in the order – change its quantity below.'); }
-  else O.lines.push({ sku_id: sku, label: p.label_full || p.label, qty: p.case_pack || 1, rate: p.retail_price, disc: 0, reason: '', retail: p.retail_price, mrp: p.mrp, case_pack: p.case_pack });
+  else O.lines.push({ sku_id: sku, label: p.label_full || p.label, qty: p.case_pack || 1, rate: p.retail_price, disc: 0, reason: '', retail: p.retail_price, mrp: p.mrp, case_pack: p.case_pack, jar_pack: p.jar_pack });
   $('prodQ').value = ''; renderProductPicker(); renderOrderLines();
   var el = document.querySelector('#ordLines .line:last-child input'); if (el && !ex) el.focus();
 }
@@ -1196,7 +1205,8 @@ function renderOrderLines() {
     var low = Number(l.rate) < Number(l.retail) - 0.0001, val = (Number(l.qty) || 0) * (Number(l.rate) || 0);
     return '<div class="line' + (low ? ' low' : '') + '"><div class="top"><b>' + esc(l.label) + '</b><button class="btn sm ghost" onclick="O.lines.splice(' + i + ',1);renderOrderLines();renderProductPicker()">Remove</button></div>' +
       '<div class="meta">MRP ' + money(l.mrp) + ' · standard ' + money(l.retail) + (l.case_pack ? ' · ' + num(l.case_pack) + ' pcs/case' : '') + '</div>' + (stockChip(productById(l.sku_id) || {}) ? '<div style="margin:2px 0 4px">' + stockChip(productById(l.sku_id)) + '</div>' : '') +
-      '<div class="qtybox"><label class="field"><span>Qty (PCS)</span><input type="number" inputmode="numeric" min="1" step="1" value="' + attr(l.qty) + '" oninput="O.lines[' + i + '].qty=this.value;lineTotals(' + i + ')"></label>' +
+      ((l.case_pack || l.jar_pack) ? '<div class="qtybox" id="lnUom' + i + '">' + (l.case_pack ? '<label class="field"><span>Cases (' + num(l.case_pack) + ' pcs)</span><input type="number" inputmode="numeric" min="0" step="1" data-u="c" value="' + (Math.floor((Number(l.qty) || 0) / l.case_pack) || '') + '" oninput="uomTyped(' + i + ')"></label>' : '') + (l.jar_pack ? '<label class="field"><span>Jars (' + num(l.jar_pack) + ' pcs)</span><input type="number" inputmode="numeric" min="0" step="1" data-u="j" value="' + (Math.floor(((Number(l.qty) || 0) - (l.case_pack ? Math.floor((Number(l.qty) || 0) / l.case_pack) * l.case_pack : 0)) / l.jar_pack) || '') + '" oninput="uomTyped(' + i + ')"></label>' : '') + '</div>' : '') +
+      '<div class="qtybox"><label class="field"><span>Qty (PCS)</span><input type="number" inputmode="numeric" min="1" step="1" id="lnQty' + i + '" value="' + attr(l.qty) + '" oninput="O.lines[' + i + '].qty=this.value;lineTotals(' + i + ');uomSync(' + i + ')"></label>' +
       '<label class="field"><span>Price / pc (₹)</span><input type="number" inputmode="decimal" min="0" step="0.01" value="' + attr(l.rate) + '" oninput="O.lines[' + i + '].rate=this.value;lineTotals(' + i + ',true)"></label></div>' +
       (can('discount.give') ? '<div class="qtybox"><label class="field"><span>Discount % (off the price)</span><input type="number" inputmode="decimal" min="0" max="99.99" step="0.01" value="' + attr(l.disc || '') + '" placeholder="0" oninput="O.lines[' + i + '].disc=this.value;lineTotals(' + i + ')"></label></div>' : '') +
       '<div id="lnInfo' + i + '" class="small" style="margin-top:6px">' + lineInfo(l) + '</div>' +
@@ -1207,10 +1217,23 @@ function renderOrderLines() {
 function lineInfo(l) {
   var q = Number(l.qty) || 0, r = Number(l.rate) || 0, cp = Number(l.case_pack) || 0, dp = Number(l.disc) || 0;
   var pr = productById(l.sku_id), over = pr && pr.stock !== null && pr.stock !== undefined && q > pr.stock;
-  var t = (over ? '<span class="chip amber">Only ' + num(pr.stock) + ' pcs in stock</span> ' : '') + '<b class="num">' + money(q * r * (1 - dp / 100)) + '</b> <span class="muted">' + num(q) + ' pcs × ' + money(r) + (dp ? ' − ' + dp + '% = ' + money(r * (1 - dp / 100)) + '/pc' : '') + (cp ? ' · ' + (q / cp).toFixed(2) + ' cases' : '') + '</span>';
+  var t = (over ? '<span class="chip amber">Only ' + num(pr.stock) + ' pcs in stock</span> ' : '') + '<b class="num">' + money(q * r * (1 - dp / 100)) + '</b> <span class="muted">' + num(q) + ' pcs × ' + money(r) + (dp ? ' − ' + dp + '% = ' + money(r * (1 - dp / 100)) + '/pc' : '') + (uomText(q, l.jar_pack, cp) ? ' · <b>' + esc(uomText(q, l.jar_pack, cp)) + '</b>' : '') + '</span>';
   if (r < Number(l.retail) - 0.0001) t += ' <span class="chip amber">Below standard ' + money(l.retail) + '</span>';
   else if (r > Number(l.retail) + 0.0001) t += ' <span class="chip green">Above standard</span>';
   return t;
+}
+/* type cases / jars → pieces; typing pieces → cases / jars follow */
+function uomTyped(i) {
+  var l = O.lines[i], box = $('lnUom' + i); if (!box) return;
+  var c = box.querySelector('[data-u=c]'), j = box.querySelector('[data-u=j]');
+  var q = (c ? (Number(c.value) || 0) * (Number(l.case_pack) || 0) : 0) + (j ? (Number(j.value) || 0) * (Number(l.jar_pack) || 0) : 0);
+  l.qty = q; $('lnQty' + i).value = q || ''; lineTotals(i);
+}
+function uomSync(i) {
+  var l = O.lines[i], box = $('lnUom' + i); if (!box) return;
+  var q = Number(l.qty) || 0, cp = Number(l.case_pack) || 0, jp = Number(l.jar_pack) || 0, c = box.querySelector('[data-u=c]'), j = box.querySelector('[data-u=j]'), left = q;
+  if (c) { var k = cp ? Math.floor(left / cp) : 0; c.value = k || ''; left -= k * cp; }
+  if (j) { var m = jp ? Math.floor(left / jp) : 0; j.value = m || ''; }
 }
 function lineTotals(i, priceChanged) {
   var l = O.lines[i], low = Number(l.rate) < Number(l.retail) - 0.0001;
@@ -1325,7 +1348,7 @@ VIEWS.orderDetail = function (p) {
       (o.backorder_of ? '<dt>Backorder of</dt><dd><button class="link" onclick="go(\'orderDetail\',{id:' + js(o.backorder_of) + '})">' + esc(o.backorder_of) + '</button></dd>' : '') + (d.header.remarks ? '<dt>Remarks</dt><dd>' + esc(d.header.remarks) + '</dd>' : '') +
       (o.cancel_reason ? '<dt>Cancelled</dt><dd>' + esc(o.cancel_reason) + '</dd>' : '') + '<dt>Revision</dt><dd>' + d.header.revision + '</dd></dl></div>';
     html += '<div class="section"><h3>Products</h3><div class="tbl-wrap"><table class="tbl"><tr><th>Product</th><th class="n">Ordered</th><th class="n">Price</th><th class="n">Supplied</th><th class="n">Delivered</th><th class="n">Value</th></tr>' +
-      d.lines.map(function (l) { return '<tr' + (l.removed ? ' style="opacity:.5;text-decoration:line-through"' : '') + '><td>' + esc(l.product_name) + (l.price_override_reason ? '<div class="tiny muted">Price note: ' + esc(l.price_override_reason) + '</div>' : '') + (l.short_reason ? '<div class="tiny" style="color:#8A5A00">Short: ' + esc(l.short_reason) + '</div>' : '') + (l.removed ? '<div class="tiny">removed</div>' : '') + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + money(l.disc_pct ? l.list_rate : l.rate) + (l.disc_pct ? '<div class="tiny muted">− ' + l.disc_pct + '% disc</div>' : '') + '</td><td class="n">' + (l.supplied_qty === '' ? '–' : num(l.supplied_qty)) + '</td><td class="n">' + (l.delivered_qty === '' ? '–' : num(l.delivered_qty)) + '</td><td class="n">' + money(l.line_value) + '</td></tr>'; }).join('') + '</table></div></div>';
+      d.lines.map(function (l) { return '<tr' + (l.removed ? ' style="opacity:.5;text-decoration:line-through"' : '') + '><td>' + esc(l.product_name) + (l.price_override_reason ? '<div class="tiny muted">Price note: ' + esc(l.price_override_reason) + '</div>' : '') + (l.short_reason ? '<div class="tiny" style="color:#8A5A00">Short: ' + esc(l.short_reason) + '</div>' : '') + (l.removed ? '<div class="tiny">removed</div>' : '') + '</td><td class="n">' + num(l.qty) + (l.qty_uom ? '<div class="tiny muted">' + esc(l.qty_uom) + '</div>' : '') + '</td><td class="n">' + money(l.disc_pct ? l.list_rate : l.rate) + (l.disc_pct ? '<div class="tiny muted">− ' + l.disc_pct + '% disc</div>' : '') + '</td><td class="n">' + (l.supplied_qty === '' ? '–' : num(l.supplied_qty)) + '</td><td class="n">' + (l.delivered_qty === '' ? '–' : num(l.delivered_qty)) + '</td><td class="n">' + money(l.line_value) + '</td></tr>'; }).join('') + '</table></div></div>';
     if (d.exceptions.length) html += '<div class="section"><h3>Exceptions</h3><div class="rows">' + d.exceptions.map(function (e) { return '<div class="row static"><div class="m"><b style="white-space:normal">' + esc(cap(e.type)) + ' · ' + esc(cap(e.reason)) + (e.short_qty ? ' · ' + num(e.short_qty) + ' pcs' : '') + '</b><span style="white-space:normal">' + esc([e.explanation, e.owner ? 'Owner ' + e.owner : '', e.expected_resolution_date ? 'by ' + fdate(e.expected_resolution_date) : '', e.next_action ? 'Next: ' + cap(e.next_action) : '', e.backorder_order_id ? 'Backorder ' + e.backorder_order_id : ''].filter(Boolean).join(' · ')) + '</span></div>' + chip(e.status) + '</div>'; }).join('') + '</div></div>';
     if (d.dispatches.length || d.deliveries.length) html += '<div class="section"><h3>Dispatch &amp; delivery</h3><div class="rows">' +
       d.dispatches.map(function (x) { return '<div class="row static"><div class="m"><b>Dispatch ' + fdate(x.dispatch_date) + '</b><span>' + esc([x.vehicle, x.driver_name, x.route, num(x.cases) + ' cases'].filter(Boolean).join(' · ')) + '</span></div>' + chip(x.status) + '</div>'; }).join('') +
@@ -1626,7 +1649,8 @@ function closeExceptionUi(id) { askReason('Resolve exception', null, { textLabel
 
 /* =========================== COLLECTIONS =========================== */
 VIEWS.collect = function () {
-  Promise.all([call('listCustomers', { with_outstanding: can('finance.view') }), call('listPayments', { mine: true, status: 'ALL', from: addDays(today(), -30) })]).then(function (r) {
+  var drv = group() === 'DELIVERY';
+  (drv ? call('listDriverCollections').then(function (d) { return [d.customers, { rows: d.rows }]; }) : Promise.all([call('listCustomers', { with_outstanding: can('finance.view') }), call('listPayments', { mine: true, status: 'ALL', from: addDays(today(), -30) })])).then(function (r) {
     S.cache.collCust = r[0];
     var pays = r[1].rows;
     var tdy = { cash: 0, online: 0, cheque: 0 };
@@ -1778,7 +1802,7 @@ VIEWS.expenses = function (p) {
       '<div class="kpis">' + kpi('Total', money0(r.total), num(r.rows.length) + ' entries', 'warn') + cats.slice(0, 3).map(function (c) { return kpi(cap(c), money0(r.by_category[c]), ''); }).join('') + '</div>' +
       '<div class="section">' + (r.rows.length ? '<div class="rows">' + r.rows.map(function (e) {
         return '<div class="row static"><div class="m"><b>' + esc(cap(e.category)) + ' · ' + esc(e.employee) + '</b><span style="white-space:normal">' + esc(fdate(e.date) + ' · ' + e.description + (e.vehicle ? ' · ' + e.vehicle : '') + (e.rejection_reason ? ' · ' + e.rejection_reason : '')) + '</span></div><div class="r"><b>' + money(e.amount) + '</b>' + chip(e.status) +
-          '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (e.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(e.proof) + '">Bill</a>' : '') + (can('expense.approve') && e.status === 'PENDING' && e.employee_id !== S.boot.user.user_id ? '<button class="btn sm ok" onclick="approveExpenseUi(' + js(e.expense_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveExpenseUi(' + js(e.expense_id) + ',false)">Reject</button>' : '') + (e.status !== 'REJECTED' ? '<button class="btn sm ghost" onclick="openEditRecord(\'EXPENSE\',' + js(e.expense_id).replace(/"/g, '&quot;') + ')">Edit</button>' : '') + '</div></div></div>';
+          '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (e.proof ? '<a class="btn sm ghost" target="_blank" href="' + attr(e.proof) + '">Bill</a>' : '') + (can('expense.approve') && e.status === 'PENDING' && (e.employee_id !== S.boot.user.user_id || isAdmin()) ? '<button class="btn sm ok" onclick="approveExpenseUi(' + js(e.expense_id) + ',true)">Approve</button><button class="btn sm danger" onclick="approveExpenseUi(' + js(e.expense_id) + ',false)">Reject</button>' : '') + (e.status !== 'REJECTED' ? '<button class="btn sm ghost" onclick="openEditRecord(\'EXPENSE\',' + js(e.expense_id).replace(/"/g, '&quot;') + ')">Edit</button>' : '') + '</div></div></div>';
       }).join('') + '</div>' : emptyState('No expenses this month', '', '<button class="btn sm" onclick="openExpenseForm()">Add expense</button>')) + '</div>');
     loadAdvanceBox();
   }, failed);
@@ -2087,8 +2111,7 @@ function filterUsers() {
   $('usList').innerHTML = rows.map(function (u) {
     return '<div class="row static"><div class="m"><b>' + esc(u.name) + ' <span class="chip" style="display:inline">' + esc(cap(u.role)) + '</span></b><span>' + esc([u.user_id, u.mobile, u.company_name].concat(u.other_companies.length ? ['+ ' + u.other_companies.join(', ')] : []).filter(Boolean).join(' · ')) + '</span>' +
       (!u.role_group ? '<span class="tiny" style="color:var(--red)">Role not recognised – this user cannot sign in</span>' : '') + (u.locked ? '<span class="tiny" style="color:var(--red)">Locked after failed logins – reset password</span>' : '') + '</div>' +
-      '<div class="r">' + chip(u.status) + '<div class="actions" style="justify-content:flex-end;margin-top:4px"><button class="btn sm ghost" onclick="openUserForm(' + js(u.user_id) + ')">Edit</button><button class="btn sm ghost" onclick="openAccess(' + js(u.user_id) + ')">Companies</button><button class="btn sm ghost" onclick="resetPwUi(' + js(u.user_id) + ')">Password</button>' +
-      (u.user_id !== S.boot.user.user_id ? '<button class="btn sm ' + (u.status === 'ACTIVE' ? 'danger' : 'ok') + '" onclick="userStatusUi(' + js(u.user_id) + ',' + js(u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE') + ')">' + (u.status === 'ACTIVE' ? 'Deactivate' : 'Activate') + '</button>' : '') + '</div></div></div>';
+      '<div class="r">' + chip(u.status) + '<button class="btn sm ghost" style="font-size:18px;line-height:1;padding:4px 10px" aria-label="More actions" onclick="userMenu(' + js(u.user_id) + ')">&#8942;</button></div></div>';
   }).join('') || emptyState('No user found', '');
 }
 function openUserForm(id) {
@@ -2122,6 +2145,28 @@ function openAccess(id) {
     };
   }, showErr);
 }
+
+/* three-dot action sheet – keeps names and details visible on small screens */
+function actionSheet(title, items) {
+  window.__sheetActs = items.filter(Boolean);
+  openModal('<h3>' + esc(title) + '</h3><div class="rows">' + window.__sheetActs.map(function (x, i) { return '<button class="row" onclick="closeModal();window.__sheetActs[' + i + '].run()"><div class="m"><b' + (x.danger ? ' style="color:var(--red)"' : '') + '>' + esc(x.label) + '</b></div></button>'; }).join('') + '</div><div class="actions end"><button class="btn ghost" onclick="closeModal()">Close</button></div>');
+}
+function userMenu(id) {
+  var u = (S.cache.users || []).filter(function (x) { return x.user_id === id; })[0]; if (!u) return;
+  actionSheet(u.name, [
+    { label: 'Edit details', run: function () { openUserForm(id); } },
+    { label: 'Companies & access', run: function () { openAccess(id); } },
+    { label: 'Reset password', run: function () { resetPwUi(id); } },
+    id !== S.boot.user.user_id ? { label: u.status === 'ACTIVE' ? 'Deactivate' : 'Activate', danger: u.status === 'ACTIVE', run: function () { userStatusUi(id, u.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'); } } : null
+  ]);
+}
+function companyMenu(id) {
+  var c = (S.cache.companies || []).filter(function (x) { return x.company_id === id; })[0]; if (!c) return;
+  actionSheet(c.company_name, [
+    { label: 'Edit company', run: function () { openCompanyForm(id); } },
+    id !== (S.boot.company || {}).company_id ? { label: c.status === 'ACTIVE' ? 'Deactivate' : 'Activate', danger: c.status === 'ACTIVE', run: function () { companyStatusUi(id, c.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE'); } } : null
+  ]);
+}
 function resetPwUi(id) {
   openModal('<h3>Reset password</h3><div class="form"><label class="field"><span>Temporary password</span><input id="rpw" placeholder="Leave blank for the default password"><small>The user must change it at next sign-in. This also unlocks a locked account.</small></label><div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="rpOk">Reset password</button></div></div>');
   $('rpOk').onclick = function () { act(this, 'Resetting…', function () { return call('resetUserPassword', id, val('rpw')); }).then(function () { closeModal(); refresh(); }, swallow); };
@@ -2150,8 +2195,7 @@ ADMIN_VIEWS.companies = function () {
   call('listCompaniesAdmin').then(function (rows) {
     S.cache.companies = rows;
     adminPage('companies', num(rows.length) + ' companies / principals', '<button class="btn sm" onclick="openCompanyForm()">Add company</button>',
-      '<div class="section"><div class="rows">' + rows.map(function (c) { return '<div class="row static"><div class="m"><b>' + esc(c.company_name) + '</b><span>' + esc([c.company_id, c.code, c.contact_person, c.mobile].filter(Boolean).join(' · ')) + '</span></div>' + chip(c.status) + '<button class="btn sm ghost" onclick="openCompanyForm(' + js(c.company_id) + ')">Edit</button>' +
-        (c.company_id !== (S.boot.company || {}).company_id ? '<button class="btn sm ghost" onclick="companyStatusUi(' + js(c.company_id) + ',' + js(c.status === 'ACTIVE' ? 'INACTIVE' : 'ACTIVE') + ')">' + (c.status === 'ACTIVE' ? 'Deactivate' : 'Activate') + '</button>' : '') + '</div>'; }).join('') + '</div></div>');
+      '<div class="section"><div class="rows">' + rows.map(function (c) { return '<div class="row static"><div class="m"><b>' + esc(c.company_name) + '</b><span>' + esc([c.company_id, c.code, c.contact_person, c.mobile].filter(Boolean).join(' · ')) + '</span></div>' + chip(c.status) + '<button class="btn sm ghost" style="font-size:18px;line-height:1;padding:4px 10px" aria-label="More actions" onclick="companyMenu(' + js(c.company_id) + ')">&#8942;</button></div>'; }).join('') + '</div></div>');
   }, failed);
 };
 function openCompanyForm(id) {
@@ -2188,7 +2232,7 @@ function openProductForm(id) {
   openModal('<h3>' + (id ? 'Edit product' : 'Add product') + '</h3><div class="form" id="pF"><div class="grid2"><label class="field"><span>Brand</span><input name="brand" value="' + attr(p.brand) + '"></label><label class="field"><span>Product name <em>*</em></span><input name="product_name" value="' + attr(p.product_name) + '"></label></div>' +
     '<div class="grid2"><label class="field"><span>Variant</span><input name="variant" value="' + attr(p.variant) + '"></label><label class="field"><span>Pack size</span><input name="pack_size" value="' + attr(p.pack_size) + '"></label></div>' +
     '<div class="grid3"><label class="field"><span>MRP</span><input name="mrp" type="number" step="0.01" value="' + attr(p.mrp) + '"></label><label class="field"><span>Retail price <em>*</em></span><input name="retail_price" type="number" step="0.01" value="' + attr(p.retail_price) + '"></label><label class="field"><span>Distributor price</span><input name="distributor_price" type="number" step="0.01" value="' + attr(p.distributor_price) + '"></label></div>' +
-    '<div class="grid3"><label class="field"><span>Case pack (pcs)</span><input name="case_pack" type="number" step="1" value="' + attr(p.case_pack) + '"></label><label class="field"><span>GST % <em>*</em></span><select name="gst">' + opts([0, 5, 12, 18, 28, 40].map(function (g) { return { value: g, label: g + '%' }; }), p.sku_id ? p.gst : '', 'Select') + '</select></label><label class="field"><span>HSN <em>*</em></span><input name="hsn" inputmode="numeric" maxlength="8" value="' + attr(p.hsn) + '"></label></div><div class="tiny muted">Retail price includes GST. GST rate and HSN are required to invoice.</div>' +
+    '<div class="grid3"><label class="field"><span>Jar pack (pcs)</span><input name="jar_pack" type="number" step="1" value="' + attr(p.jar_pack) + '"></label><label class="field"><span>Case pack (pcs)</span><input name="case_pack" type="number" step="1" value="' + attr(p.case_pack) + '"></label><label class="field"><span>GST % <em>*</em></span><select name="gst">' + opts([0, 5, 12, 18, 28, 40].map(function (g) { return { value: g, label: g + '%' }; }), p.sku_id ? p.gst : '', 'Select') + '</select></label><label class="field"><span>HSN <em>*</em></span><input name="hsn" inputmode="numeric" maxlength="8" value="' + attr(p.hsn) + '"></label></div><div class="tiny muted">Retail price includes GST. GST rate and HSN are required to invoice.</div>' +
     '<div class="grid2" style="margin-top:6px"><label class="check"><input type="checkbox" name="d2c_active"' + (p.d2c_active ? ' checked' : '') + '> Show in home-delivery shop (households)</label><label class="field"><span>Home delivery price incl. GST (blank = MRP)</span><input name="d2c_price" type="number" step="0.01" value="' + attr(p.d2c_price || '') + '"></label></div>' +
     '<div class="grid3"><label class="field"><span>Delivered in</span><select name="d2c_slot">' + opts([{ value: 'MORNING', label: 'Morning slot' }, { value: 'EVENING', label: 'Evening slot' }], p.d2c_slot || 'MORNING') + '</select></label><label class="field"><span>Offer price ₹ (blank = no offer)</span><input name="d2c_offer_price" type="number" step="0.01" value="' + attr(p.d2c_offer_price || '') + '"></label><label class="field"><span>Offer till (blank = until removed)</span><input name="d2c_offer_till" type="date" value="' + attr(p.d2c_offer_till || '') + '"></label></div>' +
     '<div class="grid2"><label class="field"><span>Label in shop (e.g. Bestseller, New)</span><input name="d2c_tag" maxlength="20" value="' + attr(p.d2c_tag || '') + '"></label><div class="field"><span>Product picture (optional)</span><div style="display:flex;gap:10px;align-items:center">' + (p.d2c_image ? '<img alt="" src="' + attr(p.d2c_image) + '" style="width:56px;height:56px;border-radius:10px;object-fit:cover;background:#eee">' : '') + '<input type="file" id="pImg" accept="image/*" style="flex:1;min-width:0"></div>' + (p.d2c_image ? '<label class="check" style="margin-top:4px"><input type="checkbox" id="pImgDel"> Remove picture</label>' : '') + '<input type="hidden" name="d2c_image" value="' + attr(p.d2c_image || '') + '"></div></div>' +
@@ -2681,7 +2725,7 @@ VIEWS.stock = function (p) {
 function filterStock() {
   var q = val('skQ').toLowerCase(), rows = (S.cache.stockRows || []).filter(function (r) { return !q || r.product.toLowerCase().indexOf(q) >= 0; });
   $('skTbl').innerHTML = '<tr><th>Product</th><th class="n">Opening</th><th class="n">In</th><th class="n">Sold</th><th class="n">Out</th><th class="n">Closing</th><th class="n">Reserved</th><th class="n">Available</th><th class="n">Damaged</th><th class="n">Value</th></tr>' + rows.map(function (r) {
-    return '<tr style="cursor:pointer" onclick="openLedger(' + js(r.sku_id) + ')"><td>' + esc(r.product) + (r.case_pack ? '<div class="tiny muted">' + r.cases + ' cases</div>' : '') + '</td><td class="n">' + num(r.opening) + '</td><td class="n">' + num(r.purchase + r.sales_return + r.adj_in) + '</td><td class="n">' + num(r.sale) + '</td><td class="n">' + num(r.purchase_return + r.adj_out) + '</td><td class="n"><b>' + num(r.closing) + '</b></td><td class="n">' + num(r.reserved) + '</td><td class="n" style="' + (r.available <= 0 ? 'color:var(--red);font-weight:700' : '') + '">' + num(r.available) + '</td><td class="n">' + num(r.damaged) + '</td><td class="n">' + money0(r.value) + '</td></tr>';
+    return '<tr style="cursor:pointer" onclick="openLedger(' + js(r.sku_id) + ')"><td>' + esc(r.product) + (r.closing_uom ? '<div class="tiny muted">' + esc(r.closing_uom) + '</div>' : (r.case_pack ? '<div class="tiny muted">' + r.cases + ' cases</div>' : '')) + '</td><td class="n">' + num(r.opening) + '</td><td class="n">' + num(r.purchase + r.sales_return + r.adj_in) + '</td><td class="n">' + num(r.sale) + '</td><td class="n">' + num(r.purchase_return + r.adj_out) + '</td><td class="n"><b>' + num(r.closing) + '</b></td><td class="n">' + num(r.reserved) + '</td><td class="n" style="' + (r.available <= 0 ? 'color:var(--red);font-weight:700' : '') + '">' + num(r.available) + '</td><td class="n">' + num(r.damaged) + '</td><td class="n">' + money0(r.value) + '</td></tr>';
   }).join('');
 }
 function openLedger(sku) {
@@ -2714,7 +2758,7 @@ function openPurchase(id) {
   call('getPurchase', id).then(function (d) {
     var h = d.header;
     openModal('<h3>' + (h.doc_type === 'PURCHASE' ? 'Purchase bill ' : 'Return ') + esc(h.bill_number) + '</h3><dl class="kv" style="margin-bottom:10px"><dt>Supplier</dt><dd>' + esc(h.supplier_name) + (h.supplier_gstin ? ' · ' + esc(h.supplier_gstin) : '') + '</dd><dt>Bill date</dt><dd>' + fdate(h.bill_date) + ' · received ' + fdate(h.received_date) + '</dd>' + (h.doc_type === 'PURCHASE' ? '<dt>Payment</dt><dd>Due ' + fdate(h.due_date) + ' · ' + (h.balance > 0 ? 'balance <b>' + money(h.balance) + '</b>' : 'fully paid / adjusted') + (can('payable.view') ? ' · <a href="#" onclick="event.preventDefault();closeModal();go(\'payables\')">Payables</a>' : '') + '</dd>' : (h.pay_status ? '<dt>Credit</dt><dd>' + esc(cap(h.pay_status)) + '</dd>' : '')) + '<dt>ITC</dt><dd>' + esc(h.itc_eligible) + '</dd>' + (h.cancel_reason ? '<dt>Cancelled</dt><dd>' + esc(h.cancel_reason) + '</dd>' : '') + '</dl>' +
-      '<div class="tbl-wrap"><table class="tbl"><tr><th>Product</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">GST</th><th class="n">Taxable</th><th class="n">Tax</th><th class="n">Total</th></tr>' + d.lines.map(function (l) { return '<tr><td>' + esc(l.product_name) + (l.batch_no ? '<div class="tiny muted">Batch ' + esc(l.batch_no) + (l.expiry_date ? ' · exp ' + fdate(l.expiry_date) : '') + '</div>' : '') + '</td><td class="n">' + num(l.qty) + '</td><td class="n">' + money(l.rate) + '</td><td class="n">' + l.gst_rate + '%</td><td class="n">' + money(l.taxable) + '</td><td class="n">' + money(l.cgst + l.sgst + l.igst) + '</td><td class="n">' + money(l.total) + '</td></tr>'; }).join('') + '</table></div>' +
+      '<div class="tbl-wrap"><table class="tbl"><tr><th>Product</th><th class="n">Qty</th><th class="n">Rate</th><th class="n">GST</th><th class="n">Taxable</th><th class="n">Tax</th><th class="n">Total</th></tr>' + d.lines.map(function (l) { return '<tr><td>' + esc(l.product_name) + (l.batch_no ? '<div class="tiny muted">Batch ' + esc(l.batch_no) + (l.expiry_date ? ' · exp ' + fdate(l.expiry_date) : '') + '</div>' : '') + '</td><td class="n">' + num(l.qty) + (l.qty_uom ? '<div class="tiny muted">' + esc(l.qty_uom) + '</div>' : '') + '</td><td class="n">' + money(l.rate) + '</td><td class="n">' + l.gst_rate + '%</td><td class="n">' + money(l.taxable) + '</td><td class="n">' + money(l.cgst + l.sgst + l.igst) + '</td><td class="n">' + money(l.total) + '</td></tr>'; }).join('') + '</table></div>' +
       '<div class="total-bar"><span>' + chip(h.status === 'POSTED' ? 'APPROVED' : h.status, cap(h.status)) + '</span><span class="v">' + money(h.total_value) + '</span></div><div class="actions end">' + (h.proof ? '<a class="btn ghost" target="_blank" href="' + attr(h.proof) + '">Bill copy</a>' : '') + '<button class="btn ghost" onclick="closeModal()">Close</button>' +
       (can('purchase.cancel') && h.status === 'POSTED' ? '<button class="btn danger" id="puCancel">Cancel entry</button>' : '') + '</div>');
     if ($('puCancel')) $('puCancel').onclick = function () { closeModal(); askReason('Cancel purchase entry', null, { danger: true, okLabel: 'Cancel entry' }).then(function (r) { act(null, '', function () { return call('cancelPurchase', id, r.reason); }).then(refresh, swallow); }); };
@@ -2901,6 +2945,44 @@ function downloadReport(btn) {
 function saveReportDrive(btn) {
   act(btn, 'Saving…', function () { return call('saveReportToDrive', S.cache.report.id, S.cache.reportParams); }).then(function (r) { if (r && r.url) viewFile(r.url, 'Saved file'); }, swallow);
 }
+</script>
+<script>
+/* =========================== GROUP VIEW (all companies, read-only) =========================== */
+VIEWS.group = function (p) {
+  p = p || {};
+  var tab = p.tab || 'overview';
+  var tabs = '<div class="tabs">' + [['overview', 'Companies'], ['DEBTORS', 'Debtors'], ['CREDITORS', 'Creditors']].map(function (t) { return '<button class="tab' + (tab === t[0] ? ' on' : '') + '" onclick="go(\'group\',{tab:\'' + t[0] + '\'})">' + t[1] + '</button>'; }).join('') + '</div>';
+  var sub = 'All your companies together · read-only';
+  if (tab === 'overview') {
+    call('getGroupOverview').then(function (r) {
+      var t = r.totals;
+      var html = head('Group view', sub) + tabs +
+        '<div class="kpis"><div class="kpi"><div class="l">Sales this month</div><div class="v">' + money0(t.sales_mtd) + '</div></div><div class="kpi"><div class="l">Collected</div><div class="v">' + money0(t.collected_mtd) + '</div></div>' +
+        '<div class="kpi"><div class="l">To receive (Debtors)</div><div class="v">' + money0(t.receivable) + '</div><div class="s">Overdue ' + money0(t.receivable_overdue) + '</div></div>' +
+        '<div class="kpi"><div class="l">To pay (Creditors)</div><div class="v">' + money0(t.payable) + '</div><div class="s">Overdue ' + money0(t.payable_overdue) + '</div></div></div>' +
+        '<div class="section"><h3>Company-wise · ' + esc(r.month) + '</h3><div class="tbl-wrap" style="overflow:auto"><table class="tbl"><tr><th>Company</th><th class="num">Orders</th><th class="num">Sales</th><th class="num">Collected</th><th class="num">Debtors</th><th class="num">Overdue</th><th class="num">Creditors</th></tr>' +
+        r.companies.map(function (c) { return '<tr><td><b>' + esc(c.company_name) + '</b></td><td class="num">' + c.orders_mtd + ' · ' + money0(c.orders_value_mtd) + '</td><td class="num">' + money0(c.sales_mtd) + '</td><td class="num">' + money0(c.collected_mtd) + '</td><td class="num">' + money0(c.receivable) + '</td><td class="num">' + money0(c.receivable_overdue) + '</td><td class="num">' + money0(c.payable) + '</td></tr>'; }).join('') +
+        '<tr><td><b>Total</b></td><td class="num"><b>' + t.orders_mtd + ' · ' + money0(t.orders_value_mtd) + '</b></td><td class="num"><b>' + money0(t.sales_mtd) + '</b></td><td class="num"><b>' + money0(t.collected_mtd) + '</b></td><td class="num"><b>' + money0(t.receivable) + '</b></td><td class="num"><b>' + money0(t.receivable_overdue) + '</b></td><td class="num"><b>' + money0(t.payable) + '</b></td></tr></table></div></div>' +
+        '<div class="hint">Net position (Debtors − Creditors): <b>' + money0(t.net_position) + '</b>. Tap Debtors or Creditors for party-wise outstanding with ageing.</div>';
+      setMain(html);
+    }, failed);
+    return;
+  }
+  call('getGroupOutstanding', { kind: tab, q: p.q || '' }).then(function (r) {
+    var cols = r.companies, deb = r.kind === 'DEBTORS';
+    var html = head(deb ? 'Outstanding Receivables (Debtors)' : 'Outstanding Payables (Creditors)', sub + ' · as on ' + r.as_on) + tabs +
+      '<div class="field"><input id="grpQ" placeholder="Search party or bill no." value="' + attr(p.q || '') + '" onkeydown="if(event.key===\'Enter\')go(\'group\',{tab:\'' + tab + '\',q:this.value})"></div>' +
+      '<div class="tbl-wrap" style="overflow:auto"><table class="tbl"><tr><th>' + (deb ? 'Party' : 'Supplier') + '</th>' + cols.map(function (c) { return '<th class="num">' + esc(c.name) + '</th>'; }).join('') + '<th class="num">Not due</th><th class="num">1-30</th><th class="num">31-60</th><th class="num">61-90</th><th class="num">90+</th><th class="num">Total</th></tr>' +
+      r.parties.map(function (x, i) {
+        return '<tr onclick="var e=document.getElementById(\'gb' + i + '\');e.style.display=e.style.display===\'none\'?\'table-row\':\'none\'" style="cursor:pointer"><td><b>' + esc(x.party) + '</b></td>' + cols.map(function (c) { return '<td class="num">' + (x.by_company[c.company_id] ? money0(x.by_company[c.company_id]) : '–') + '</td>'; }).join('') +
+          '<td class="num">' + money0(x.NOT_DUE) + '</td><td class="num">' + money0(x.D30) + '</td><td class="num">' + money0(x.D60) + '</td><td class="num">' + money0(x.D90) + '</td><td class="num">' + money0(x.D90P) + '</td><td class="num"><b>' + money0(x.total) + '</b></td></tr>' +
+          '<tr id="gb' + i + '" style="display:none"><td colspan="' + (cols.length + 7) + '"><div class="muted" style="font-size:12px">' + x.bills.map(function (b) { return esc(b.company) + ' · ' + esc(b.number) + ' · due ' + esc(b.due) + (b.days > 0 ? ' (' + b.days + ' days late)' : '') + ' · <b>' + money(b.balance) + '</b>'; }).join('<br>') + '</div></td></tr>';
+      }).join('') +
+      '<tr><td><b>Total</b></td>' + cols.map(function (c) { return '<td class="num"><b>' + money0(r.totals.by_company[c.company_id] || 0) + '</b></td>'; }).join('') + '<td class="num"><b>' + money0(r.totals.NOT_DUE) + '</b></td><td class="num"><b>' + money0(r.totals.D30) + '</b></td><td class="num"><b>' + money0(r.totals.D60) + '</b></td><td class="num"><b>' + money0(r.totals.D90) + '</b></td><td class="num"><b>' + money0(r.totals.D90P) + '</b></td><td class="num"><b>' + money0(r.totals.total) + '</b></td></tr></table></div>' +
+      (r.parties.length ? '' : '<div class="empty">Nothing outstanding.</div>');
+    setMain(html);
+  }, failed);
+};
 </script>
 
 <script>
