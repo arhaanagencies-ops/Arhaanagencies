@@ -425,9 +425,10 @@ function $(id) { return document.getElementById(id); }
 function esc(v) { return String(v == null ? '' : v).replace(/[&<>"']/g, function (m) { return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[m]; }); }
 function attr(v) { return esc(v); }
 function js(v) { return esc(JSON.stringify(v == null ? '' : v)); }
-/* V9.5 units: 650 pcs (case 600, jar 50) -> "1 case + 1 jar" */
-function uomText(qty, jar, cas) {
-  var q = Math.floor(Number(qty) || 0), u = [{ n: Number(cas) || 0, a: 'case', b: 'cases' }, { n: Number(jar) || 0, a: 'jar', b: 'jars' }].filter(function (x) { return x.n > 0; }).sort(function (a, b) { return b.n - a.n; });
+/* V9.7 units: 650 pcs (case 600, sub-unit "Jar" 50) -> "1 case + 1 jar" */
+function uomPlural(name) { var n = String(name || '').trim().toLowerCase(); return /(s|x|ch|sh)$/.test(n) ? n + 'es' : n + 's'; }
+function uomText(qty, sub, cas, name) {
+  var q = Math.floor(Number(qty) || 0), nm = String(name || 'Jar').trim().toLowerCase(), u = [{ n: Number(cas) || 0, a: 'case', b: 'cases' }, { n: Number(sub) || 0, a: nm, b: uomPlural(nm) }].filter(function (x) { return x.n > 0; }).sort(function (a, b) { return b.n - a.n; });
   if (!u.length || q < u[u.length - 1].n) return '';
   var parts = []; u.forEach(function (x) { var k = Math.floor(q / x.n); if (k > 0) { parts.push(k + ' ' + (k === 1 ? x.a : x.b)); q -= k * x.n; } });
   if (q > 0) parts.push(q + ' pcs');
@@ -895,7 +896,7 @@ function salesHome(h) {
       : emptyState('No beat planned for today', 'Pick any active beat from Retail outlets.')) + '</div>';
   var attn = [];
   if (s.followups_due) attn.push(['followups', s.followups_due, 'Follow-ups due', 'Calls and visits promised for today or earlier']);
-  if (s.pending_orders) attn.push(['orders', s.pending_orders, 'Orders waiting for supply', 'Still editable until supply is confirmed']);
+  if (s.pending_orders) attn.push(['orders', s.pending_orders, 'Orders waiting for supply', 'Still editable until stock is reserved']);
   if (s.short_supplies) attn.push(['orders', s.short_supplies, 'Short / not supplied orders', 'Tell the outlet what is coming and when']);
   if (s.failed_deliveries) attn.push(['orders', s.failed_deliveries, 'Failed deliveries', 'Check the reason and next action']);
   attn.push(['closing', h.closing_done ? '✓' : '!', h.closing_done ? 'Day closed' : 'Daily closing not submitted', h.closing_done ? 'Today\'s summary is with management' : 'Submit before you finish for the day']);
@@ -1099,7 +1100,7 @@ VIEWS.order = function (p) {
     if (d.order) {
       O.salesman_id = d.order.salesman_id; O.beat_id = d.order.beat_id; O.date = d.order.requested_delivery_date || ''; O.po = d.order.customer_po; O.remarks = d.order.remarks; O.status = d.order.status; O.pay = d.order.payment_type || ''; O.shipSame = d.order.ship_same !== false && d.order.ship_same !== 'NO'; O.shipName = d.order.ship_name || ''; O.shipAddr = d.order.ship_address || ''; O.shipMobile = d.order.ship_mobile || '';
       if (O.date) O.month = O.date.slice(0, 7);
-      O.lines = d.order.lines.map(function (l) { var pr = productById(l.sku_id) || {}; return { order_line_id: l.order_line_id, sku_id: l.sku_id, label: l.product_name, qty: l.qty, rate: l.list_rate || l.rate, disc: l.disc_pct || 0, reason: l.price_override_reason, retail: pr.retail_price || l.master_rate, mrp: pr.mrp || l.mrp, case_pack: pr.case_pack || l.case_pack, jar_pack: pr.jar_pack || l.jar_pack }; });
+      O.lines = d.order.lines.map(function (l) { var pr = productById(l.sku_id) || {}; return { order_line_id: l.order_line_id, sku_id: l.sku_id, label: l.product_name, qty: l.qty, rate: l.list_rate || l.rate, disc: l.disc_pct || 0, reason: l.price_override_reason, retail: pr.retail_price || l.master_rate, mrp: pr.mrp || l.mrp, case_pack: pr.case_pack || l.case_pack, jar_pack: pr.jar_pack || l.jar_pack, sub_name: pr.sub_unit_name || l.sub_unit_name }; });
       O.preCustomer = d.order.customer_id;
     }
     if (p.customer_id) O.preCustomer = p.customer_id;
@@ -1195,7 +1196,7 @@ function addOrderLine(sku) {
   var p = productById(sku); if (!p) return;
   var ex = O.lines.filter(function (l) { return l.sku_id === sku; })[0];
   if (ex) { toast(p.label + ' is already in the order – change its quantity below.'); }
-  else O.lines.push({ sku_id: sku, label: p.label_full || p.label, qty: p.case_pack || 1, rate: p.retail_price, disc: 0, reason: '', retail: p.retail_price, mrp: p.mrp, case_pack: p.case_pack, jar_pack: p.jar_pack });
+  else O.lines.push({ sku_id: sku, label: p.label_full || p.label, qty: p.case_pack || 1, rate: p.retail_price, disc: 0, reason: '', retail: p.retail_price, mrp: p.mrp, case_pack: p.case_pack, jar_pack: p.jar_pack, sub_name: p.sub_unit_name });
   $('prodQ').value = ''; renderProductPicker(); renderOrderLines();
   var el = document.querySelector('#ordLines .line:last-child input'); if (el && !ex) el.focus();
 }
@@ -1205,7 +1206,7 @@ function renderOrderLines() {
     var low = Number(l.rate) < Number(l.retail) - 0.0001, val = (Number(l.qty) || 0) * (Number(l.rate) || 0);
     return '<div class="line' + (low ? ' low' : '') + '"><div class="top"><b>' + esc(l.label) + '</b><button class="btn sm ghost" onclick="O.lines.splice(' + i + ',1);renderOrderLines();renderProductPicker()">Remove</button></div>' +
       '<div class="meta">MRP ' + money(l.mrp) + ' · standard ' + money(l.retail) + (l.case_pack ? ' · ' + num(l.case_pack) + ' pcs/case' : '') + '</div>' + (stockChip(productById(l.sku_id) || {}) ? '<div style="margin:2px 0 4px">' + stockChip(productById(l.sku_id)) + '</div>' : '') +
-      ((l.case_pack || l.jar_pack) ? '<div class="qtybox" id="lnUom' + i + '">' + (l.case_pack ? '<label class="field"><span>Cases (' + num(l.case_pack) + ' pcs)</span><input type="number" inputmode="numeric" min="0" step="1" data-u="c" value="' + (Math.floor((Number(l.qty) || 0) / l.case_pack) || '') + '" oninput="uomTyped(' + i + ')"></label>' : '') + (l.jar_pack ? '<label class="field"><span>Jars (' + num(l.jar_pack) + ' pcs)</span><input type="number" inputmode="numeric" min="0" step="1" data-u="j" value="' + (Math.floor(((Number(l.qty) || 0) - (l.case_pack ? Math.floor((Number(l.qty) || 0) / l.case_pack) * l.case_pack : 0)) / l.jar_pack) || '') + '" oninput="uomTyped(' + i + ')"></label>' : '') + '</div>' : '') +
+      ((l.case_pack || l.jar_pack) ? '<div class="qtybox" id="lnUom' + i + '">' + (l.case_pack ? '<label class="field"><span>Cases (' + num(l.case_pack) + ' pcs)</span><input type="number" inputmode="numeric" min="0" step="1" data-u="c" value="' + (Math.floor((Number(l.qty) || 0) / l.case_pack) || '') + '" oninput="uomTyped(' + i + ')"></label>' : '') + (l.jar_pack ? '<label class="field"><span>' + esc(uomPlural(l.sub_name || 'Jar').replace(/^./, function (c) { return c.toUpperCase(); })) + ' (' + num(l.jar_pack) + ' pcs)</span><input type="number" inputmode="numeric" min="0" step="1" data-u="j" value="' + (Math.floor(((Number(l.qty) || 0) - (l.case_pack ? Math.floor((Number(l.qty) || 0) / l.case_pack) * l.case_pack : 0)) / l.jar_pack) || '') + '" oninput="uomTyped(' + i + ')"></label>' : '') + '</div>' : '') +
       '<div class="qtybox"><label class="field"><span>Qty (PCS)</span><input type="number" inputmode="numeric" min="1" step="1" id="lnQty' + i + '" value="' + attr(l.qty) + '" oninput="O.lines[' + i + '].qty=this.value;lineTotals(' + i + ');uomSync(' + i + ')"></label>' +
       '<label class="field"><span>Price / pc (₹)</span><input type="number" inputmode="decimal" min="0" step="0.01" value="' + attr(l.rate) + '" oninput="O.lines[' + i + '].rate=this.value;lineTotals(' + i + ',true)"></label></div>' +
       (can('discount.give') ? '<div class="qtybox"><label class="field"><span>Discount % (off the price)</span><input type="number" inputmode="decimal" min="0" max="99.99" step="0.01" value="' + attr(l.disc || '') + '" placeholder="0" oninput="O.lines[' + i + '].disc=this.value;lineTotals(' + i + ')"></label></div>' : '') +
@@ -1217,7 +1218,7 @@ function renderOrderLines() {
 function lineInfo(l) {
   var q = Number(l.qty) || 0, r = Number(l.rate) || 0, cp = Number(l.case_pack) || 0, dp = Number(l.disc) || 0;
   var pr = productById(l.sku_id), over = pr && pr.stock !== null && pr.stock !== undefined && q > pr.stock;
-  var t = (over ? '<span class="chip amber">Only ' + num(pr.stock) + ' pcs in stock</span> ' : '') + '<b class="num">' + money(q * r * (1 - dp / 100)) + '</b> <span class="muted">' + num(q) + ' pcs × ' + money(r) + (dp ? ' − ' + dp + '% = ' + money(r * (1 - dp / 100)) + '/pc' : '') + (uomText(q, l.jar_pack, cp) ? ' · <b>' + esc(uomText(q, l.jar_pack, cp)) + '</b>' : '') + '</span>';
+  var t = (over ? '<span class="chip amber">Only ' + num(pr.stock) + ' pcs in stock</span> ' : '') + '<b class="num">' + money(q * r * (1 - dp / 100)) + '</b> <span class="muted">' + num(q) + ' pcs × ' + money(r) + (dp ? ' − ' + dp + '% = ' + money(r * (1 - dp / 100)) + '/pc' : '') + (uomText(q, l.jar_pack, cp, l.sub_name) ? ' · <b>' + esc(uomText(q, l.jar_pack, cp, l.sub_name)) + '</b>' : '') + '</span>';
   if (r < Number(l.retail) - 0.0001) t += ' <span class="chip amber">Below standard ' + money(l.retail) + '</span>';
   else if (r > Number(l.retail) + 0.0001) t += ' <span class="chip green">Above standard</span>';
   return t;
@@ -1299,8 +1300,8 @@ VIEWS.orders = function (p) {
   needs.push(S.cache.beats ? Promise.resolve(S.cache.beats) : call('listBeats', {}));
   Promise.all(needs).then(function (r) {
     var res = r[0], sms = isAdmin() ? r[1] : [], beats = r[isAdmin() ? 2 : 1]; S.cache.beats = beats;
-    var statuses = [{ value: '', label: 'All live orders' }, { value: 'RECEIVED', label: 'Received' }, { value: 'DRAFT', label: 'Draft' }, { value: 'SUPPLY_CONFIRMED', label: 'Supply confirmed' }, { value: 'PARTIAL_SUPPLY', label: 'Partial supply' },
-      { value: 'NOT_SUPPLIED', label: 'Not supplied' }, { value: 'DISPATCHED', label: 'Dispatched' }, { value: 'DELIVERED', label: 'Delivered' }, { value: 'PARTIAL_DELIVERY', label: 'Partially delivered' }, { value: 'DELIVERY_FAILED', label: 'Delivery failed' },
+    var statuses = [{ value: '', label: 'All live orders' }, { value: 'RECEIVED', label: 'Received' }, { value: 'DRAFT', label: 'Draft' }, { value: 'SUPPLY_CONFIRMED', label: 'Stock reserved' }, { value: 'PARTIAL_SUPPLY', label: 'Partly reserved' },
+      { value: 'NOT_SUPPLIED', label: 'Not reserved' }, { value: 'DISPATCHED', label: 'Dispatched' }, { value: 'DELIVERED', label: 'Delivered' }, { value: 'PARTIAL_DELIVERY', label: 'Partially delivered' }, { value: 'DELIVERY_FAILED', label: 'Delivery failed' },
       { value: 'INVOICED', label: 'Invoiced' }, { value: 'CANCELLED', label: 'Cancelled' }];
     var html = head('Orders received', num(res.count) + ' orders · ' + money(res.order_value) + ' · ' + (p.company_id === 'ALL' ? 'all companies' : companyLine()), can('order.create') ? '<button class="btn sm" onclick="go(\'order\')">Take order</button>' : '');
     html += '<div class="filters" id="ordF"><label class="field"><span>From</span><input type="date" name="from" value="' + attr(p.from) + '"></label><label class="field"><span>To</span><input type="date" name="to" value="' + attr(p.to) + '"></label>' +
@@ -1329,9 +1330,10 @@ VIEWS.orderDetail = function (p) {
     var html = head(o.customer_name, esc(o.order_id) + ' · ' + fdate(o.order_date_key) + ' ' + esc(o.order_time), chip(o.status, o.status_label));
     html += '<div class="section">' + routeHtml(o, inv && inv.status === 'PAID') + '</div>';
     var btns = [];
-    if (a.supply) btns.push('<button class="btn" onclick="go(\'supply\',{id:' + js(o.order_id) + '})">Confirm supply</button>');
+    if (a.supply) btns.push('<button class="btn" onclick="go(\'supply\',{id:' + js(o.order_id) + '})">Reserve stock</button>');
     if (a.invoice) btns.push('<button class="btn" onclick="openInvoiceForm(' + js(o.order_id) + ')">' + (['DELIVERED','PARTIAL_DELIVERY','DELIVERY_EXCEPTION'].indexOf(o.status) >= 0 ? 'Link Marg invoice' : 'Raise GST invoice') + '</button>');
     if (a.print) btns.push('<button class="btn ghost" onclick="printDoc(\'INV\',' + js(inv.invoice_id) + ')">Print invoice</button>');
+    if (inv && inv.invoice_id && can('invoice.revise') && !o.cancelled) btns.push('<button class="btn ghost" onclick="openReviseInvoice(' + js(inv.invoice_id) + ')">Correct prices</button>');
     if (a.credit_note) btns.push('<button class="btn ghost" onclick="go(\'noteForm\',{invoice_id:' + js(inv.invoice_id) + ',type:\'CREDIT\'})">Credit note</button>');
     if (a.dispatch) btns.push('<button class="btn" onclick="go(\'dispatch\',{ids:[' + js(o.order_id) + ']})">Dispatch</button>');
     if (a.deliver && o.dispatch_id) btns.push('<button class="btn" onclick="go(\'deliveryStop\',{dispatch_id:' + js(o.dispatch_id) + '})">Record delivery</button>');
@@ -1371,17 +1373,17 @@ VIEWS.supply = function (p) {
   Promise.all([call('getOrderDetail', p.id), call('listUserChoices')]).then(function (r) {
     var d = r[0], users = r[1], lines = d.lines.filter(function (l) { return !l.removed; });
     S.cache.supply = { id: p.id, lines: lines };
-    var html = head('Confirm supply', esc(d.order.customer_name) + ' · ' + esc(d.order.order_id) + ' · ' + money(d.order.order_value));
-    html += '<div class="section"><div class="section-head"><h3>Quantities</h3><button class="btn sm ghost" onclick="supplyAll()">Supply everything</button></div>' +
+    var html = head('Reserve stock', esc(d.order.customer_name) + ' · ' + esc(d.order.order_id) + ' · ' + money(d.order.order_value));
+    html += '<div class="section"><div class="section-head"><h3>Quantities</h3><button class="btn sm ghost" onclick="supplyAll()">Reserve everything</button></div>' +
       lines.map(function (l, i) { return '<div class="line" id="sl' + i + '"><div class="top"><b>' + esc(l.product_name) + '</b><span class="num">' + num(l.qty) + ' pcs × ' + money(l.rate) + '</span></div>' +
         (l.stock_available !== null && l.stock_available !== undefined ? '<div class="small ' + (l.stock_available < l.qty ? '' : 'muted') + '" style="margin-top:4px' + (l.stock_available < l.qty ? ';color:#8A5A00' : '') + '">In stock (after other confirmed orders): <b>' + num(l.stock_available) + ' pcs</b></div>' : '') +
-        '<div class="qtybox"><label class="field"><span>Available</span><input type="number" min="0" step="1" inputmode="numeric" id="sa' + i + '" value="' + supplyDefault(l) + '" oninput="supplyChanged(' + i + ')"></label><label class="field"><span>Supplied</span><input type="number" min="0" step="1" inputmode="numeric" id="ss' + i + '" value="' + supplyDefault(l) + '" oninput="supplyChanged(' + i + ')"></label></div>' +
+        '<div class="qtybox"><label class="field"><span>Available</span><input type="number" min="0" step="1" inputmode="numeric" id="sa' + i + '" value="' + supplyDefault(l) + '" oninput="supplyChanged(' + i + ')"></label><label class="field"><span>Reserve qty</span><input type="number" min="0" step="1" inputmode="numeric" id="ss' + i + '" value="' + supplyDefault(l) + '" oninput="supplyChanged(' + i + ')"></label></div>' +
         '<div id="sw' + i + '" class="hidden" style="margin-top:8px"><div class="small" id="sn' + i + '" style="color:#8A5A00;margin-bottom:6px"></div><div class="grid2"><label class="field"><span>Short reason <em>*</em></span><select id="sr' + i + '" onchange="supplyChanged(' + i + ')">' + opts(L('SHORT_SUPPLY'), '', 'Select reason') + '</select></label><label class="field" id="sel' + i + '"><span>Explanation</span><input id="se' + i + '"></label></div></div></div>'; }).join('') + '</div>';
     html += '<div class="section hidden" id="shortBox"><h3>Short supply follow-through</h3><div class="form"><div class="grid2"><label class="field"><span>Responsible owner <em>*</em></span><select id="sOwner">' + opts(users, S.boot.user.user_id, 'Select person', 'user_id', 'name') + '</select></label>' +
       '<label class="field"><span>Expected resolution date <em>*</em></span><input type="date" id="sDate" min="' + today() + '" value="' + addDays(today(), 2) + '"></label></div>' +
       '<label class="check"><input type="checkbox" id="sBack" checked> Create a backorder for the short quantity</label>' + fileField('sProof', 'Proof (optional)') + '</div></div>';
     html += '<div class="section"><label class="field"><span>Remarks</span><input id="sRem"></label></div>';
-    html += '<div class="total-bar"><span>Supplied value</span><span class="v" id="sTotal"></span></div><div class="sticky-actions"><button class="btn ghost" onclick="back()">Cancel</button><button class="btn" style="flex:1" onclick="saveSupply(this)">Confirm supply</button></div>';
+    html += '<div class="total-bar"><span>Reserved value</span><span class="v" id="sTotal"></span></div><div class="sticky-actions"><button class="btn ghost" onclick="back()">Cancel</button><button class="btn" style="flex:1" onclick="saveSupply(this)">Reserve stock</button></div>';
     setMain(html); lines.forEach(function (l, i) { supplyChanged(i); });
   }, failed);
 };
@@ -1416,8 +1418,8 @@ function saveSupply(btn) {
 VIEWS.dispatch = function (p) {
   call('getDispatchFormData').then(function (d) {
     var pre = (p && p.ids) || [];
-    var html = head('Dispatch', 'Orders with confirmed supply · ' + companyLine());
-    if (!d.orders.length) return setMain(html + '<div class="section">' + emptyState('Nothing ready to dispatch', 'Confirm supply on received orders first.') + '</div>');
+    var html = head('Dispatch', 'Orders with reserved stock · ' + companyLine());
+    if (!d.orders.length) return setMain(html + '<div class="section">' + emptyState('Nothing ready to dispatch', 'Reserve stock on received orders first.') + '</div>');
     html += '<div class="section"><div class="section-head"><h3>Orders</h3><span class="muted small">Tick all orders going on this trip</span></div><div class="rows" id="dOrders">' +
       d.orders.map(function (o) { return '<label class="row"><input type="checkbox" style="width:20px;height:20px;min-height:0" value="' + attr(o.order_id) + '"' + (pre.indexOf(o.order_id) >= 0 || (!pre.length && d.orders.length === 1) ? ' checked' : '') + '><div class="m"><b>' + esc(o.customer_name) + '</b><span>' + esc([o.area, o.beat_name, 'delivery ' + fdate(o.requested_delivery_date)].join(' · ')) + '</span></div><div class="r"><b>' + money(o.supplied_value || o.order_value) + '</b>' + chip(o.status, o.status_label) + '</div></label>'; }).join('') + '</div></div>';
     html += '<div class="section"><div class="form" id="dForm"><div class="grid2"><label class="field"><span>Transport</span><select name="transport_mode">' + opts([{ value: 'OWN', label: 'Own vehicle' }, { value: 'HIRED', label: 'Hired transport' }], 'OWN') + '</select></label>' +
@@ -1576,7 +1578,7 @@ var STAGES = [['SUPPLY', 'Supply'], ['INVOICE', 'Invoice'], ['DISPATCH', 'Dispat
 VIEWS.control = function (p) {
   var stage = (p && p.stage) || 'SUPPLY'; S.params = { stage: stage };
   var tabs = '<div class="tabs">' + STAGES.map(function (s) { return '<button class="' + (s[0] === stage ? 'on' : '') + '" onclick="go(\'control\',{stage:\'' + s[0] + '\'},{replace:true})">' + s[1] + '</button>'; }).join('') + '</div>';
-  var hint = { SUPPLY: 'Received orders waiting for supply confirmation (stock is checked)', DISPATCH: 'Invoiced orders ready to load', DELIVERY: 'On the road – delivery not yet recorded', POD: 'Delivered without proof of delivery',
+  var hint = { SUPPLY: 'Received orders waiting for stock to be reserved (stock is checked)', DISPATCH: 'Invoiced orders ready to load', DELIVERY: 'On the road – delivery not yet recorded', POD: 'Delivered without proof of delivery',
     INVOICE: 'Supplied – raise the GST invoice before dispatch (older delivered orders: link the Marg invoice)', SHORT: 'Short or not supplied', FAILED: 'Failed deliveries waiting for the next action', BACKORDER: 'Short quantities re-ordered', EXCEPTIONS: 'Open exceptions with owner and due date' }[stage];
   if (stage === 'EXCEPTIONS') {
     return call('listExceptions', { status: 'OPEN' }).then(function (rows) {
@@ -1587,7 +1589,7 @@ VIEWS.control = function (p) {
     }, failed);
   }
   call('listOrders', { stage: stage }).then(function (res) {
-    var act1 = { SUPPLY: ['Confirm supply', 'supply'], DISPATCH: ['Dispatch', 'dispatch'], DELIVERY: ['Record delivery', 'deliveryStop'], POD: ['Upload POD', 'pod'], INVOICE: ['Raise invoice', 'invoice'] }[stage];
+    var act1 = { SUPPLY: ['Reserve stock', 'supply'], DISPATCH: ['Dispatch', 'dispatch'], DELIVERY: ['Record delivery', 'deliveryStop'], POD: ['Upload POD', 'pod'], INVOICE: ['Raise invoice', 'invoice'] }[stage];
     var html = head('Order control', hint + ' · ' + companyLine(), (stage === 'DISPATCH' && res.rows.length && can('dispatch.create') ? '<button class="btn sm" onclick="go(\'dispatch\')">Dispatch several</button>' : '') + (stage === 'DELIVERY' && can('dispatch.create') ? ' <button class="btn sm ghost" onclick="openRedate()">Change dispatch / delivery date</button>' : '')) + tabs;
     var bulk = stage === 'INVOICE' && can('invoice.create') && res.rows.length > 1;
     html += '<div class="section">' + (bulk ? '<div class="note" style="margin-bottom:10px;display:flex;gap:10px;align-items:center;flex-wrap:wrap"><label style="display:flex;gap:6px;align-items:center"><input type="checkbox" id="ivAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.ivSel\').forEach(function(c){c.checked=this.checked}.bind(this));bulkCount()"> Select all</label><span id="ivN" class="muted small"></span><label style="display:flex;gap:6px;align-items:center;margin-left:auto">Invoice date <input type="date" id="bulkDate" max="' + (S.boot.invoice_max_date || today()) + '" value="' + today() + '" style="min-height:36px"></label><button class="btn" id="bulkBtn" onclick="bulkInvoice(this)">Raise invoices for selected</button></div><div class="small muted" id="bulkProg" style="margin-bottom:8px"></div>' : '') + (res.rows.length ? '<div class="rows">' + res.rows.map(function (o) {
@@ -2232,15 +2234,23 @@ function openProductForm(id) {
   openModal('<h3>' + (id ? 'Edit product' : 'Add product') + '</h3><div class="form" id="pF"><div class="grid2"><label class="field"><span>Brand</span><input name="brand" value="' + attr(p.brand) + '"></label><label class="field"><span>Product name <em>*</em></span><input name="product_name" value="' + attr(p.product_name) + '"></label></div>' +
     '<div class="grid2"><label class="field"><span>Variant</span><input name="variant" value="' + attr(p.variant) + '"></label><label class="field"><span>Pack size</span><input name="pack_size" value="' + attr(p.pack_size) + '"></label></div>' +
     '<div class="grid3"><label class="field"><span>MRP</span><input name="mrp" type="number" step="0.01" value="' + attr(p.mrp) + '"></label><label class="field"><span>Retail price <em>*</em></span><input name="retail_price" type="number" step="0.01" value="' + attr(p.retail_price) + '"></label><label class="field"><span>Distributor price</span><input name="distributor_price" type="number" step="0.01" value="' + attr(p.distributor_price) + '"></label></div>' +
-    '<div class="grid3"><label class="field"><span>Jar pack (pcs)</span><input name="jar_pack" type="number" step="1" value="' + attr(p.jar_pack) + '"></label><label class="field"><span>Case pack (pcs)</span><input name="case_pack" type="number" step="1" value="' + attr(p.case_pack) + '"></label><label class="field"><span>GST % <em>*</em></span><select name="gst">' + opts([0, 5, 12, 18, 28, 40].map(function (g) { return { value: g, label: g + '%' }; }), p.sku_id ? p.gst : '', 'Select') + '</select></label><label class="field"><span>HSN <em>*</em></span><input name="hsn" inputmode="numeric" maxlength="8" value="' + attr(p.hsn) + '"></label></div><div class="tiny muted">Retail price includes GST. GST rate and HSN are required to invoice.</div>' +
+    '<div class="grid2"><label class="field"><span>Pack type</span><select name="pack_type" id="pkType" onchange="packTypeChanged()">' + opts([{ value: 'SINGLE', label: 'Single unit – pieces + case' }, { value: 'DOUBLE', label: 'Two units – pieces + sub-unit + case' }], p.pack_type === 'DOUBLE' ? 'DOUBLE' : 'SINGLE') + '</select></label><div class="field' + (p.pack_type === 'DOUBLE' ? '' : ' hidden') + '" id="pkSub"><span>Sub-unit name &amp; pieces in one</span><div style="display:flex;gap:8px"><select id="pkSubSel" onchange="packTypeChanged()" style="flex:1">' + opts(['Jar', 'Box', 'Mono carton', 'Sub case', 'Other…'].map(function (x) { return { value: x, label: x }; }), ['Jar', 'Box', 'Mono carton', 'Sub case'].indexOf(p.sub_unit_name || 'Jar') >= 0 ? (p.sub_unit_name || 'Jar') : 'Other…') + '</select><input name="jar_pack" type="number" step="1" min="1" placeholder="pcs" style="width:84px" value="' + attr(p.jar_pack || '') + '"></div><input name="sub_unit_name" id="pkSubName" class="hidden" placeholder="Sub-unit name" value="' + attr(p.sub_unit_name || 'Jar') + '"></div></div>' +
+    '<div class="grid3"><label class="field"><span>Case pack (pcs) – master carton</span><input name="case_pack" type="number" step="1" value="' + attr(p.case_pack) + '"></label><label class="field"><span>GST % <em>*</em></span><select name="gst">' + opts([0, 5, 12, 18, 28, 40].map(function (g) { return { value: g, label: g + '%' }; }), p.sku_id ? p.gst : '', 'Select') + '</select></label><label class="field"><span>HSN <em>*</em></span><input name="hsn" inputmode="numeric" maxlength="8" value="' + attr(p.hsn) + '"></label></div><div class="tiny muted">Retail price includes GST. GST rate and HSN are required to invoice.</div>' +
     '<div class="grid2" style="margin-top:6px"><label class="check"><input type="checkbox" name="d2c_active"' + (p.d2c_active ? ' checked' : '') + '> Show in home-delivery shop (households)</label><label class="field"><span>Home delivery price incl. GST (blank = MRP)</span><input name="d2c_price" type="number" step="0.01" value="' + attr(p.d2c_price || '') + '"></label></div>' +
     '<div class="grid3"><label class="field"><span>Delivered in</span><select name="d2c_slot">' + opts([{ value: 'MORNING', label: 'Morning slot' }, { value: 'EVENING', label: 'Evening slot' }], p.d2c_slot || 'MORNING') + '</select></label><label class="field"><span>Offer price ₹ (blank = no offer)</span><input name="d2c_offer_price" type="number" step="0.01" value="' + attr(p.d2c_offer_price || '') + '"></label><label class="field"><span>Offer till (blank = until removed)</span><input name="d2c_offer_till" type="date" value="' + attr(p.d2c_offer_till || '') + '"></label></div>' +
     '<div class="grid2"><label class="field"><span>Label in shop (e.g. Bestseller, New)</span><input name="d2c_tag" maxlength="20" value="' + attr(p.d2c_tag || '') + '"></label><div class="field"><span>Product picture (optional)</span><div style="display:flex;gap:10px;align-items:center">' + (p.d2c_image ? '<img alt="" src="' + attr(p.d2c_image) + '" style="width:56px;height:56px;border-radius:10px;object-fit:cover;background:#eee">' : '') + '<input type="file" id="pImg" accept="image/*" style="flex:1;min-width:0"></div>' + (p.d2c_image ? '<label class="check" style="margin-top:4px"><input type="checkbox" id="pImgDel"> Remove picture</label>' : '') + '<input type="hidden" name="d2c_image" value="' + attr(p.d2c_image || '') + '"></div></div>' +
     (id ? '<label class="field"><span>Reason for price change</span><input name="change_reason"></label>' : '') + '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Cancel</button><button class="btn" id="pOk">Save product</button></div></div>');
+  packTypeChanged();
   $('pOk').onclick = function () { var v = formVals('pF'); v.sku_id = id || ''; act(this, 'Saving…', function () { return call('saveProduct', v).then(function (r) {
       var sku = r.sku_id || id, del = $('pImgDel') && $('pImgDel').checked;
       return readFile('pImg', 700).then(function (f) { if (f && sku) return call('saveProductImage', sku, f.data, f.name, f.mime).then(function () { return r; }); if (del && sku) return call('saveProductImage', sku, '').then(function () { return r; }); return r; });
     }); }).then(function () { closeModal(); refresh(); }, swallow); };
+}
+function packTypeChanged() {
+  var dbl = $('pkType').value === 'DOUBLE', sel = $('pkSubSel').value, other = sel === 'Other…';
+  $('pkSub').classList.toggle('hidden', !dbl); $('pkSubName').classList.toggle('hidden', !dbl || !other);
+  if (!other) $('pkSubName').value = sel;
+  else if (['Jar', 'Box', 'Mono carton', 'Sub case'].indexOf($('pkSubName').value) >= 0) $('pkSubName').value = '';
 }
 function productStatusUi(id, st) { askReason(st === 'ACTIVE' ? 'Activate product' : 'Deactivate product', null, {}).then(function (r) { act(null, '', function () { return call('setProductStatus', id, st, r.reason); }).then(refresh, swallow); }); }
 
@@ -2332,7 +2342,7 @@ var CONFIG_LABELS = {
   use_schedule_cutoff: ['Use per-schedule cut-off times', 'YES / NO'], delivery_fallback: ['When a beat has no delivery schedule', 'BEAT_DAYS (beat weekdays), CONFIG_DAYS (default days below) or NONE (no delivery)'],
   default_delivery_days: ['Default delivery days', 'Used when fallback is CONFIG_DAYS, e.g. MONDAY,WEDNESDAY,FRIDAY'], calendar_days_ahead: ['Booking window (days ahead)', ''],
   allow_order_pending_customer: ['Allow orders for outlets awaiting approval', 'YES / NO'], block_order_over_credit: ['Block salesman orders over credit limit', 'YES / NO'],
-  auto_visit_on_order: ['Record a visit automatically with each order', 'YES / NO'], proof_required_modes: ['Collection proof required for', 'ALL modes or CASH only'],
+  auto_visit_on_order: ['Record a visit automatically with each order', 'YES / NO'], auto_reserve_stock: ['Reserve stock automatically when an order is placed', 'YES = if every product is in stock the order goes straight to Stock Reserved; otherwise Operations reserves it. NO = Operations reserves stock by hand'], proof_required_modes: ['Collection proof required for', 'ALL modes or CASH only'],
   duplicate_payment_ref: ['Duplicate payment reference', 'WARN (allow after confirmation) or BLOCK'], invoice_requires_pod: ['POD required before invoice', 'YES / NO'],
   fuel_receipt_required: ['Fuel receipt mandatory', 'YES / NO'], expense_proof_required: ['Expense bill mandatory', 'YES / NO'], notify_email: ['Send email notifications', 'YES / NO'],
   management_notify_emails: ['Extra management emails', 'Comma separated – receive every delivery notification'], session_minutes: ['Session timeout (minutes)', ''],
@@ -2463,7 +2473,7 @@ VIEWS.billing = function (p) {
         '<div class="section">' + (rows.length && (can('outlet.report') || can('invoice.print')) ? '<label class="chk" style="display:flex;gap:8px;align-items:center;margin-bottom:8px"><input type="checkbox" id="invAll" style="width:20px;height:20px;min-height:0;flex:none" onchange="document.querySelectorAll(\'.invSel\').forEach(function(c){c.checked=this.checked}.bind(this));invSelCount()"> Select all <span class="muted small" id="invSelN"></span></label>' : '') + (rows.length ? '<div class="rows">' + rows.map(function (i) {
           return '<div class="row static">' + ((can('outlet.report') || can('invoice.print')) && i.status !== 'CANCELLED' ? '<input type="checkbox" class="invSel" value="' + attr(i.invoice_id) + '" onchange="invSelCount()" style="width:20px;height:20px;min-height:0;flex:none;margin-right:8px">' : '') + '<div class="m"><b>' + esc(i.invoice_number) + ' · ' + esc(i.customer_name) + '</b><span>' + fdate(i.invoice_date) + (i.gst_invoice ? ' · taxable ' + money(i.taxable_value) + ' + GST ' + money(i.gst) : ' · Marg / earlier invoice') + ' · ' + esc(i.salesman_name) + '</span>' +
             (i.credited || i.debited ? '<span class="tiny">credit notes ' + money(i.credited) + ' · debit notes ' + money(i.debited) + '</span>' : '') + '</div><div class="r"><b>' + money(i.invoice_value) + '</b>' + chip(i.status) +
-            '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (i.gst_invoice && i.status !== 'CANCELLED' ? '<button class="btn sm ghost" onclick="printDoc(\'INV\',' + js(i.invoice_id) + ')">Print</button>' : '') +
+            '<div class="actions" style="justify-content:flex-end;margin-top:4px">' + (i.gst_invoice && i.status !== 'CANCELLED' ? '<button class="btn sm ghost" onclick="printDoc(\'INV\',' + js(i.invoice_id) + ')">Print</button>' : '') + (i.gst_invoice && i.status !== 'CANCELLED' && can('invoice.revise') ? '<button class="btn sm ghost" onclick="openReviseInvoice(' + js(i.invoice_id) + ')">Correct prices</button>' : '') +
             (i.gst_invoice && i.status !== 'CANCELLED' && can('note.create') ? '<button class="btn sm ghost" onclick="go(\'noteForm\',{invoice_id:' + js(i.invoice_id) + ',type:\'CREDIT\'})">Credit</button><button class="btn sm ghost" onclick="go(\'noteForm\',{invoice_id:' + js(i.invoice_id) + ',type:\'DEBIT\'})">Debit</button>' : '') +
             '<button class="btn sm ghost" onclick="go(\'orderDetail\',{id:' + js(i.order_id) + '})">Order</button>' +
             (can('invoice.cancel') && i.status !== 'CANCELLED' && !i.paid && !i.credited ? '<button class="btn sm danger" onclick="cancelInvoiceUi(' + js(i.invoice_id) + ')">Cancel</button>' : '') + '</div></div></div>';
@@ -2672,6 +2682,22 @@ function openGstFix() {
   $('gfPg').onclick = function () { var b = this; act(b, 'Repairing…', function () { return call('repairProductGst'); }); };
   $('gfChk').onclick = function () { run(false, this); };
   $('gfApply').onclick = function () { run(true, this); };
+}
+
+/* V9.6 correct invoice prices (Admin) */
+function openReviseInvoice(id) {
+  call('getInvoiceReviseForm', id).then(function (d) {
+    if (d.blocked) { toast(d.blocked, 'bad'); return; }
+    window.__rv = d;
+    openModal('<h3>Correct prices – ' + esc(d.invoice_number) + '</h3><div class="note small">' + esc(d.customer_name) + ' · ' + fdate(d.invoice_date) + ' · value ' + money(d.invoice_value) + (d.paid ? ' · received ' + money(d.paid) : '') + '. Enter the price per piece <b>including GST</b>. GST is recalculated; quantities do not change. If this invoice is already in a filed GST return, tell your CA.</div>' +
+      '<div class="form" id="rvF">' + d.lines.map(function (l, i) { return '<div class="line"><div class="top"><b>' + esc(l.product_name) + '</b><span class="muted small">' + num(l.qty) + ' pcs · GST ' + l.gst_rate + '%</span></div><div class="qtybox"><label class="field"><span>Price / pc (₹)</span><input type="number" step="0.01" min="0" id="rvR' + i + '" value="' + attr(l.rate) + '"></label><label class="field"><span>Discount %</span><input type="number" step="0.01" min="0" max="99.99" id="rvD' + i + '" value="' + attr(l.disc_pct || '') + '" placeholder="0"></label></div>' + (l.standard ? '<div class="tiny muted">Standard ' + money(l.standard) + ' · MRP ' + money(l.mrp) + '</div>' : '') + '</div>'; }).join('') +
+      '<label class="field"><span>Reason <em>*</em></span><input id="rvWhy" placeholder="e.g. wrong rate entered, agreed price"></label></div>' +
+      '<div class="actions end"><button class="btn ghost" onclick="closeModal()">Close</button><button class="btn" id="rvOk">Save correction</button></div>');
+    $('rvOk').onclick = function () {
+      var b = this, payload = { invoice_id: d.invoice_id, reason: val('rvWhy'), lines: d.lines.map(function (l, i) { return { invoice_line_id: l.invoice_line_id, rate: val('rvR' + i), disc_pct: val('rvD' + i) }; }) };
+      act(b, 'Saving…', function () { return call('reviseInvoice', payload); }).then(function () { closeModal(); refresh(); }, swallow);
+    };
+  }, failed);
 }
 </script>
 
